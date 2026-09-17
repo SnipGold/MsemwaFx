@@ -7,6 +7,7 @@
 #property version "1.10"
 
 // Detectors
+#include "MsemwaFX_Decision_Engine.mq5"
 #include "MsemwaFX_BOS_Detector.mq5"
 #include "MsemwaFX_CHOCH_Detector.mq5"
 #include "MsemwaFX_OrderBlock_Detector.mq5"
