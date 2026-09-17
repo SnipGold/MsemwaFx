@@ -8,30 +8,32 @@ struct OrderBlock
    bool bullish;
 };
 
-OrderBlock DetectOrderBlock(string symbol)
+// Returns TRUE if a valid Order Block is found
+bool DetectOrderBlock(string symbol)
 {
-   OrderBlock ob;
-
-   ob.high=0;
-   ob.low=0;
-   ob.candle=-1;
-   ob.bullish=false;
-
-   for(int i=2;i<=20;i++)
+   for(int i=2; i<=20; i++)
    {
-      double open=iOpen(symbol,PERIOD_M15,i);
-      double close=iClose(symbol,PERIOD_M15,i);
+      double open  = iOpen(symbol, PERIOD_M15, i);
+      double close = iClose(symbol, PERIOD_M15, i);
 
       // Bullish Order Block
-      if(close<open)
+      if(close < open)
       {
-         ob.high=iHigh(symbol,PERIOD_M15,i);
-         ob.low=iLow(symbol,PERIOD_M15,i);
-         ob.candle=i;
-         ob.bullish=true;
-         break;
+         double nextClose = iClose(symbol, PERIOD_M15, i-1);
+
+         if(nextClose > iHigh(symbol, PERIOD_M15, i))
+            return true;
+      }
+
+      // Bearish Order Block
+      if(close > open)
+      {
+         double nextClose = iClose(symbol, PERIOD_M15, i-1);
+
+         if(nextClose < iLow(symbol, PERIOD_M15, i))
+            return true;
       }
    }
 
-   return ob;
+   return false;
 }
