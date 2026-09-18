@@ -13,6 +13,7 @@
 #include "MsemwaFX_OrderBlock_Detector.mq5"
 #include "MsemwaFX_FVG_Detector.mq5"
 #include "MsemwaFX_LiquiditySweep_Detector.mq5"
+#include "MsemwaFX_Webhook.mq5"
 
 //===================== PAIRS =======================================
 string Symbols[]={
