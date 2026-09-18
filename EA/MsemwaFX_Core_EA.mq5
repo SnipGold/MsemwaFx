@@ -1,12 +1,12 @@
 //+------------------------------------------------------------------+
 //| MsemwaFX_Core_EA.mq5                                              |
 //| Engine 1 - Institutional Scanner                                 |
-//| Version: 1.10                                                    |
+//| Version: 1.20                                                     |
 //+------------------------------------------------------------------+
 #property strict
-#property version "1.10"
+#property version "1.20"
 
-//===================== INCLUDES ====================================
+//========================= INCLUDES =========================
 #include "MsemwaFX_Decision_Engine.mq5"
 #include "MsemwaFX_BOS_Detector.mq5"
 #include "MsemwaFX_CHOCH_Detector.mq5"
@@ -15,7 +15,7 @@
 #include "MsemwaFX_LiquiditySweep_Detector.mq5"
 #include "MsemwaFX_Webhook.mq5"
 
-//===================== PAIRS =======================================
+//=========================== PAIRS ==========================
 string Symbols[]={
    "GBPUSD",
    "EURUSD",
@@ -26,28 +26,28 @@ string Symbols[]={
    "XAUUSD"
 };
 
-//===================== INIT ========================================
+//============================ INIT ==========================
 int OnInit()
 {
-   EventSetTimer(60); // Scan every 60 seconds
+   EventSetTimer(60);          // Scan every 60 seconds
    Print("MsemwaFX Engine 1 Started.");
    return(INIT_SUCCEEDED);
 }
 
-//===================== DEINIT ======================================
+//=========================== DEINIT =========================
 void OnDeinit(const int reason)
 {
    EventKillTimer();
 }
 
-//===================== TIMER =======================================
+//============================ TIMER =========================
 void OnTimer()
 {
    for(int i=0;i<ArraySize(Symbols);i++)
       ScanPair(Symbols[i]);
 }
 
-//===================== SCANNER =====================================
+//=========================== SCANNER ========================
 void ScanPair(string symbol)
 {
    // Timeframe prices
@@ -62,8 +62,8 @@ void ScanPair(string symbol)
    FVGZone fvg=DetectFVG(symbol);
    LiquiditySweep ls=DetectLiquiditySweep(symbol);
 
-   // Step 2 - Decision Engine
-   bool killZone=true;   // Automatic later
+   // Decision Engine
+   bool killZone=true;      // Tutafanya automatic baadaye
 
    int score=CalculateScore(
       bos,
@@ -75,10 +75,12 @@ void ScanPair(string symbol)
    );
 
    string signal=GetDecision(score);
-if(signal=="GO")
-{
-   SendSignal(symbol,signal,score);
-}
+
+   // Send only confirmed trade signals
+   if(signal!="NO TRADE")
+   {
+      SendSignal(symbol,signal,score);
+   }
 
    // Journal Output
    Print(
