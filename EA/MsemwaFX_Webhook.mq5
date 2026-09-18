@@ -1,46 +1,56 @@
 //+------------------------------------------------------------------+
 //| MsemwaFX_Webhook.mq5                                              |
-//| Sends GO signals to Railway                                       |
+//| Sends Institutional Signals to Railway                           |
+//| Version: 1.60                                                    |
 //+------------------------------------------------------------------+
 #property strict
 
-string WEBHOOK_URL="https://YOUR-RAILWAY-URL.up.railway.app/api/signal";
+// Railway Webhook URL
+string WEBHOOK_URL="https://msemwa-ai-school-production.up.railway.app/api/signal";
 
-bool SendSignal(
+//---------------------------------------------------
+void SendSignal(
    string symbol,
    string signal,
-   int score
+   int score,
+   TradeLevels trade
 )
 {
    string body=
-      "{\"symbol\":\""+symbol+
-      "\",\"signal\":\""+signal+
-      "\",\"score\":"+IntegerToString(score)+"}";
+      "{"
+      "\"symbol\":\""+symbol+"\","
+      "\"signal\":\""+signal+"\","
+      "\"score\":"+IntegerToString(score)+","
+      "\"entry\":"+DoubleToString(trade.entry,_Digits)+","
+      "\"sl\":"+DoubleToString(trade.sl,_Digits)+","
+      "\"tp1\":"+DoubleToString(trade.tp1,_Digits)+","
+      "\"tp2\":"+DoubleToString(trade.tp2,_Digits)+
+      "}";
 
    char data[];
    StringToCharArray(body,data);
 
    char result[];
+   string responseHeaders;
    string headers="Content-Type: application/json\r\n";
 
-   int timeout=5000;
-
-   int res=WebRequest(
+   int status=WebRequest(
       "POST",
       WEBHOOK_URL,
       headers,
-      timeout,
+      5000,
       data,
       result,
-      headers
+      responseHeaders
    );
 
-   if(res==-1)
+   if(status==-1)
    {
-      Print("Webhook failed: ",GetLastError());
-      return false;
+      Print("Webhook Error: ",GetLastError());
    }
-
-   Print("Webhook sent: ",symbol);
-   return true;
+   else
+   {
+      Print("Signal sent successfully. HTTP Status: ",status);
+   }
 }
+//+------------------------------------------------------------------+
