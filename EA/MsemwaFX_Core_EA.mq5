@@ -84,7 +84,7 @@ TradeLevels trade=GetTradeLevels(symbol,bullish);
 
 if(signal!="NO TRADE")
 {
-   SendSignal(symbol,signal,score);
+   SendSignal(symbol,signal,score,trade);
 
    Print(
       "ENTRY=",DoubleToString(trade.entry,_Digits),
