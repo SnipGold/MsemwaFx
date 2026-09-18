@@ -94,11 +94,6 @@ if(signal!="NO TRADE")
    );
 }
 
-   // Send only confirmed trade signals
-   if(signal!="NO TRADE")
-   {
-      SendSignal(symbol,signal,score);
-   }
 
    // Journal Output
    Print(
