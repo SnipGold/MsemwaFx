@@ -15,6 +15,7 @@
 #include "MsemwaFX_LiquiditySweep_Detector.mq5"
 #include "MsemwaFX_Webhook.mq5"
 #include "MsemwaFX_KillZone.mq5"
+#include "MsemwaFX_TradeLevels.mq5"
 
 //=========================== PAIRS ==========================
 string Symbols[]={
@@ -76,6 +77,22 @@ void ScanPair(string symbol)
    );
 
    string signal=GetDecision(score);
+
+bool bullish=(bos=="Bullish BOS");
+
+TradeLevels trade=GetTradeLevels(symbol,bullish);
+
+if(signal!="NO TRADE")
+{
+   SendSignal(symbol,signal,score);
+
+   Print(
+      "ENTRY=",DoubleToString(trade.entry,_Digits),
+      " | SL=",DoubleToString(trade.sl,_Digits),
+      " | TP1=",DoubleToString(trade.tp1,_Digits),
+      " | TP2=",DoubleToString(trade.tp2,_Digits)
+   );
+}
 
    // Send only confirmed trade signals
    if(signal!="NO TRADE")
