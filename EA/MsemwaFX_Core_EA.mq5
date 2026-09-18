@@ -75,6 +75,10 @@ void ScanPair(string symbol)
    );
 
    string signal=GetDecision(score);
+if(signal=="GO")
+{
+   SendSignal(symbol,signal,score);
+}
 
    // Journal Output
    Print(
