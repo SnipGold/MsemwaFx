@@ -14,6 +14,7 @@
 #include "MsemwaFX_FVG_Detector.mq5"
 #include "MsemwaFX_LiquiditySweep_Detector.mq5"
 #include "MsemwaFX_Webhook.mq5"
+#include "MsemwaFX_KillZone.mq5"
 
 //=========================== PAIRS ==========================
 string Symbols[]={
@@ -63,7 +64,7 @@ void ScanPair(string symbol)
    LiquiditySweep ls=DetectLiquiditySweep(symbol);
 
    // Decision Engine
-   bool killZone=true;      // Tutafanya automatic baadaye
+ bool killZone=IsKillZone();     // Tutafanya automatic baadaye
 
    int score=CalculateScore(
       bos,
