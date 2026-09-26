@@ -23,3 +23,15 @@ r = requests.post(url, json={
 }, timeout=20)
 
 print(r.text)
+
+provider = os.getenv("WA_PROVIDER")
+phone = os.getenv("WA_PHONE")
+apikey = os.getenv("WA_APIKEY")
+
+if provider == "callmebot" and phone and apikey:
+    wa = (
+        f"https://api.callmebot.com/whatsapp.php"
+        f"?phone={phone}&text={msg}&apikey={apikey}"
+    )
+    w = requests.get(wa, timeout=20)
+    print("WhatsApp:", w.text)
