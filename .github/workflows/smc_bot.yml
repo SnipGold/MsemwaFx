@@ -5,9 +5,14 @@ on:
     - cron: "*/15 * * * *"
   workflow_dispatch:
 
+concurrency:
+  group: smc-ict-bot
+  cancel-in-progress: false
+
 jobs:
   run-bot:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
@@ -19,17 +24,31 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
+        working-directory: smc_bot
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then
             pip install -r requirements.txt
           fi
 
-      - name: Run SMC Bot
+      - name: Restore bot state
+        uses: actions/cache@v4
+        with:
+          path: |
+            smc_bot/state.json
+            smc_bot/alerted.json
+          key: smc-bot-state-${{ github.run_id }}
+          restore-keys: |
+            smc-bot-state-
+
+      - name: Run SMC Bot (single poll)
         working-directory: smc_bot
         env:
           TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          WA_PHONE: ${{ secrets.WA_PHONE }} 
-        run: python main.py 
+          WA_PROVIDER: ${{ secrets.WA_PROVIDER }}
+          WA_PHONE: ${{ secrets.WA_PHONE }}
+          WA_APIKEY: ${{ secrets.WA_APIKEY }}
+          RUN_ONCE: "1"
+        run: python main.py
