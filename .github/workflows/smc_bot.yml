@@ -26,9 +26,10 @@ jobs:
           fi
 
       - name: Run SMC Bot
+        working-directory: smc_bot
         env:
           TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          WA_PHONE: ${{ secrets.WA_PHONE }}
-        run: python main.py
+          WA_PHONE: ${{ secrets.WA_PHONE }} 
+        run: python main.py 
