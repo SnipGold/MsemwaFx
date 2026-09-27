@@ -1,4 +1,9 @@
 import os
+import sys
+
+# Make sure GitHub Actions can find config.py
+sys.path.append(os.path.dirname(__file__))
+
 from config import SYMBOLS
 from modules.notifier import send_telegram, send_whatsapp
 
@@ -12,3 +17,4 @@ send_telegram(msg)
 send_whatsapp(msg)
 
 print("MsemwaFx AI Trader v1.0 started.")
+
