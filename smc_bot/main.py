@@ -1,37 +1,14 @@
 import os
-import requests
-
-BOT = os.getenv("TELEGRAM_BOT_TOKEN")
-CHAT = os.getenv("TELEGRAM_CHAT_ID")
-RUN_ONCE = os.getenv("RUN_ONCE")
-
-print("SMC ICT Bot started...")
-
-if not BOT or not CHAT:
-    raise SystemExit("Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID")
+from config import SYMBOLS
+from modules.notifier import send_telegram, send_whatsapp
 
 msg = (
-    "✅ MsemwaFX SMC ICT Bot is ONLINE\n"
-    f"RUN_ONCE={RUN_ONCE}"
+    "🤖 MsemwaFx AI Trader v1.0 is ONLINE\n\n"
+    f"Pairs: {', '.join(SYMBOLS)}\n\n"
+    "SMC/ICT Engine Ready."
 )
 
-url = f"https://api.telegram.org/bot{BOT}/sendMessage"
+send_telegram(msg)
+send_whatsapp(msg)
 
-r = requests.post(url, json={
-    "chat_id": CHAT,
-    "text": msg
-}, timeout=20)
-
-print(r.text)
-
-provider = os.getenv("WA_PROVIDER")
-phone = os.getenv("WA_PHONE")
-apikey = os.getenv("WA_APIKEY")
-
-if provider == "callmebot" and phone and apikey:
-    wa = (
-        f"https://api.callmebot.com/whatsapp.php"
-        f"?phone={phone}&text={msg}&apikey={apikey}"
-    )
-    w = requests.get(wa, timeout=20)
-    print("WhatsApp:", w.text)
+print("MsemwaFx AI Trader v1.0 started.")
