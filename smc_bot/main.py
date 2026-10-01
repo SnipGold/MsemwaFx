@@ -65,7 +65,15 @@ def run():
             continue
         found+=1
         candle_time=m15[-1]["time"]
-        fp="|".join([symbol,candle_time,setup["direction"],str(setup["entry"]),str(setup["sl"])])
+        fp="|".join([
+            symbol,
+            setup["direction"],
+            str(setup["entry"]),
+            str(setup["sl"]),
+            str(setup["tp1"]),
+            str(setup["tp2"]),
+            setup["grade"],
+        ])
         if fp in sent:
             print("  DUPLICATE")
             continue
