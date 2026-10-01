@@ -58,7 +58,14 @@ def send_whatsapp(msg):
         return False
 
 
-def format_alert(symbol, setup, candle_time, current_price, entry_status, instruction):
+def format_alert(
+    symbol,
+    setup,
+    candle_time,
+    current_price,
+    entry_status,
+    instruction,
+):
     return (
         f"🚨 *MsemwaFx Institutional Alert*\n\n"
         f"*Pair:* {symbol}\n"
@@ -66,9 +73,10 @@ def format_alert(symbol, setup, candle_time, current_price, entry_status, instru
         f"*Grade:* {setup['grade']} / Score {setup['score']}/5\n"
         f"*HTF Bias:* {setup['bias']}\n\n"
         f"📍 *Current Price:* {current_price}\n"
-        f"📌 *Entry Status:* {entry_status}\n"
-        f"📝 *Instruction:* {instruction}\n\n"
-        f"🔴 *Entry:* {setup['entry']}\n"
+        f"📌 *Entry Zone:* {setup['entry_low']} - {setup['entry_high']}\n"
+        f"🎯 *Planned Entry:* {setup['entry']}\n"
+        f"*Entry Status:* {entry_status}\n"
+        f"*Instruction:* {instruction}\n\n"
         f"🛑 *Stop Loss:* {setup['sl']}\n"
         f"🎯 *TP1:* {setup['tp1']}\n"
         f"🎯 *TP2:* {setup['tp2']}\n"
@@ -80,5 +88,3 @@ def format_alert(symbol, setup, candle_time, current_price, entry_status, instru
         f"*Signal Candle:* {candle_time}\n\n"
         f"_MsemwaFx — H4/H1 → M15_"
     )
-
-
