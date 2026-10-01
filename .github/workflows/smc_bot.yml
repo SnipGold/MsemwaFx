@@ -1,47 +1,43 @@
-name: SMC ICT Bot
+name: MsemwaFx SMC ICT Bot
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "7,22,37,52 * * * *"
   workflow_dispatch:
 
 concurrency:
-  group: smc-ict-bot
+  group: msemwafx-live
   cancel-in-progress: false
 
+permissions:
+  contents: write
+
 jobs:
-  run-bot:
+  scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-
+    timeout-minutes: 12
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
       - name: Install dependencies
         working-directory: smc_bot
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then
-            pip install -r requirements.txt
-          fi
-
-      - name: Restore bot state
+          pip install -r requirements.txt
+      - name: Restore bot cache and state
         uses: actions/cache@v4
         with:
           path: |
-            smc_bot/state.json
-            smc_bot/alerted.json
-          key: smc-bot-state-${{ github.run_id }}
+            smc_bot/data_cache
+            smc_bot/sent.json
+          key: msemwafx-state-${{ github.run_id }}
           restore-keys: |
-            smc-bot-state-
-
-      - name: Run SMC Bot (single poll)
+            msemwafx-state-
+      - name: Run one MsemwaFx scan
         working-directory: smc_bot
         env:
           TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
@@ -50,5 +46,12 @@ jobs:
           WA_PROVIDER: ${{ secrets.WA_PROVIDER }}
           WA_PHONE: ${{ secrets.WA_PHONE }}
           WA_APIKEY: ${{ secrets.WA_APIKEY }}
-          RUN_ONCE: "1"
         run: python main.py
+      - name: Persist alert state
+        run: |
+          if git diff --quiet -- smc_bot/sent.json; then exit 0; fi
+          git config user.name "msemwafx-bot"
+          git config user.email "msemwafx-bot@users.noreply.github.com"
+          git add smc_bot/sent.json
+          git commit -m "Update bot alert state"
+          git push
