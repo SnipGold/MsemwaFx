@@ -3,7 +3,7 @@ import os
 import time
 
 from config import SYMBOLS, M15_OUTPUTSIZE, SENT_TTL
-from modules.decision_engine import analyze_pair
+from modules.decision_engine import analyze_pair_diagnostic
 from modules.notifier import format_alert, send_telegram, send_whatsapp
 from modules.timeframes import build_htf
 from modules.twelvedata import get_candles
@@ -130,10 +130,10 @@ def run():
             print("  INSUFFICIENT DATA")
             continue
 
-        setup = analyze_pair(h4, h1, m15)
+        setup, reason = analyze_pair_diagnostic(h4, h1, m15)
 
         if not setup:
-            print("  NO TRADE")
+            print(f"  NO TRADE — {reason}")
             continue
 
         found += 1
