@@ -4,16 +4,16 @@ from modules.fvg import detect_fvg
 from modules.liquidity import liquidity_sweep
 
 
-def analyze_pair(h4_candles, h1_candles, m15_candles):
+def analyze_pair_diagnostic(h4_candles, h1_candles, m15_candles):
+    """Run the existing decision logic and also explain the first rejection reason."""
     h4 = analyze_structure(h4_candles)
     h1 = analyze_structure(h1_candles)
 
-    if (
-        h4["bias"] == "NEUTRAL"
-        or h1["bias"] == "NEUTRAL"
-        or h4["bias"] != h1["bias"]
-    ):
-        return None
+    if h4["bias"] == "NEUTRAL" or h1["bias"] == "NEUTRAL":
+        return None, f"HTF NEUTRAL (H4={h4['bias']}, H1={h1['bias']})"
+
+    if h4["bias"] != h1["bias"]:
+        return None, f"H4/H1 MISMATCH (H4={h4['bias']}, H1={h1['bias']})"
 
     bias = h4["bias"]
     ob = detect_order_block(m15_candles, bias)
@@ -21,7 +21,7 @@ def analyze_pair(h4_candles, h1_candles, m15_candles):
     sweep = liquidity_sweep(m15_candles)
 
     if not ob:
-        return None
+        return None, f"NO {bias} ORDER BLOCK"
 
     ob_low = float(ob["low"])
     ob_high = float(ob["high"])
@@ -33,7 +33,7 @@ def analyze_pair(h4_candles, h1_candles, m15_candles):
         risk = entry - sl
 
         if risk <= 0:
-            return None
+            return None, "INVALID RISK (BUY)"
 
         tp1 = round(entry + risk * 2, 5)
         tp2 = round(entry + risk * 3, 5)
@@ -44,7 +44,7 @@ def analyze_pair(h4_candles, h1_candles, m15_candles):
         risk = sl - entry
 
         if risk <= 0:
-            return None
+            return None, "INVALID RISK (SELL)"
 
         tp1 = round(entry - risk * 2, 5)
         tp2 = round(entry - risk * 3, 5)
@@ -62,9 +62,9 @@ def analyze_pair(h4_candles, h1_candles, m15_candles):
         score += 1
 
     if score < 3:
-        return None
+        return None, f"SCORE TOO LOW ({score}/5)"
 
-    return {
+    setup = {
         "bias": bias,
         "direction": direction,
         "entry": entry,
@@ -81,3 +81,10 @@ def analyze_pair(h4_candles, h1_candles, m15_candles):
         "sweep": sweep["type"] if sweep else "NONE",
         "order_block": ob["type"],
     }
+
+    return setup, "QUALIFIED"
+
+
+def analyze_pair(h4_candles, h1_candles, m15_candles):
+    setup, _ = analyze_pair_diagnostic(h4_candles, h1_candles, m15_candles)
+    return setup
