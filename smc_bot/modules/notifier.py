@@ -21,12 +21,9 @@ def send_telegram(msg):
             timeout=20,
         )
         print(f"Telegram HTTP {r.status_code}")
-
         if r.status_code != 200:
             print(r.text[:300])
-
         return r.status_code == 200
-
     except requests.RequestException as exc:
         print(f"Telegram failed: {exc}")
         return False
@@ -52,35 +49,31 @@ def send_whatsapp(msg):
         )
         print(f"WhatsApp HTTP {r.status_code}")
         return r.status_code == 200
-
     except requests.RequestException as exc:
         print(f"WhatsApp failed: {exc}")
         return False
 
 
-def format_alert(
-    symbol,
-    setup,
-    candle_time,
-    current_price,
-    entry_status,
-    instruction,
-):
+def format_alert(symbol, setup, candle_time, current_price, entry_status, instruction):
     return (
         f"🚨 *MsemwaFx Institutional Alert*\n\n"
         f"*Pair:* {symbol}\n"
         f"*Direction:* {setup['direction']}\n"
         f"*Grade:* {setup['grade']} / Score {setup['score']}/5\n"
+        f"*Timeframe:* M15 execution\n"
         f"*HTF Bias:* {setup['bias']}\n\n"
         f"📍 *Current Price:* {current_price}\n"
         f"📌 *Entry Zone:* {setup['entry_low']} - {setup['entry_high']}\n"
         f"🎯 *Planned Entry:* {setup['entry']}\n"
         f"*Entry Status:* {entry_status}\n"
-        f"*Instruction:* {instruction}\n\n"
+        f"*Instruction:* {instruction}\n"
+        f"⏳ *Expiry:* {setup['expiry_time']}\n\n"
         f"🛑 *Stop Loss:* {setup['sl']}\n"
+        f"📏 *Risk:* {setup['risk_pips']} pips\n"
+        f"📦 *Lot Size:* {setup['lot_size']:.2f}\n"
         f"🎯 *TP1:* {setup['tp1']}\n"
         f"🎯 *TP2:* {setup['tp2']}\n"
-        f"⚖️ *Risk:Reward:* {setup['rr']}\n\n"
+        f"⚖️ *Projected R:R:* {setup['rr']}\n\n"
         f"*Structure:* {setup['event']}\n"
         f"*FVG:* {setup['fvg']}\n"
         f"*Sweep:* {setup['sweep']}\n"
