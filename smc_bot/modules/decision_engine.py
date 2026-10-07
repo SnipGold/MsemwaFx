@@ -193,8 +193,23 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
     opposite_h4 = h4["bias"] in ("BULLISH", "BEARISH") and h4["bias"] != wanted
     has_htf_context = h1["bias"] in ("BULLISH", "BEARISH") or h4["bias"] in ("BULLISH", "BEARISH")
 
-    # Liquidity-first classification. HTF alignment is a quality enhancer,
-    # not an absolute gate. A reversal can qualify before HTF bias flips.
+    # Liquidity-first, but with a moderate reversal gate. We still allow
+    # early reversals before H4 flips; we just require a genuine structure
+    # confirmation instead of treating every sweep reaction as a reversal.
+    reversal_confirmed = (
+        (h1_aligned and h1["event"] in ("BOS", "CHoCH"))
+        or (
+            h4["bias"] == "NEUTRAL"
+            and opposite_h1
+            and h1["event"] == "CHoCH"
+        )
+        or (
+            opposite_h4
+            and h1["bias"] == "NEUTRAL"
+            and h4["event"] in ("BOS", "CHoCH")
+        )
+    )
+
     if htf_aligned:
         setup_type = "CONTINUATION"
         grade = "S5"
@@ -203,7 +218,7 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
         setup_type = "CONTINUATION"
         grade = "S4"
         score = 4
-    elif has_htf_context and (opposite_h1 or opposite_h4 or h4["bias"] == "NEUTRAL") and ob["signal_index"] > ob["sweep"]["index"]:
+    elif has_htf_context and reversal_confirmed and ob["signal_index"] > ob["sweep"]["index"]:
         setup_type = "REVERSAL"
         grade = "S4"
         score = 4
