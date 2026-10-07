@@ -5,6 +5,7 @@ on:
     paths:
       - "replay_data/*.csv"
       - "replay_all_pairs.py"
+      - ".github/workflows/run_replay_all.yml"
   workflow_dispatch:
 
 permissions:
