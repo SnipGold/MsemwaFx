@@ -1,4 +1,4 @@
-name: Run Seven Pair Liquidity Replay
+name: Run Eight Pair Liquidity Replay
 
 on:
   push:
@@ -26,10 +26,9 @@ jobs:
         run: |
           python - <<'PY'
           import os,requests,csv
-          from collections import Counter
           with open('replay_all_summary.csv',newline='') as f: rows=list(csv.DictReader(f))
           def n(k): return sum(int(x[k] or 0) for x in rows)
-          msg=('🧪 MsemwaFx 7-PAIR REPLAY COMPLETE\n\n'
+          msg=('🧪 MsemwaFx 8-PAIR ONE-WEEK REPLAY COMPLETE\n\n'
                f'Liquidity Events: {n("liquidity_events")}\n'
                f'Institutional Setups: {n("institutional_setups")}\n'
                f'Entries Triggered: {n("entries")}\n'
@@ -49,5 +48,5 @@ jobs:
           git config user.email "msemwafx-replay@users.noreply.github.com"
           git add replay_all_results.csv replay_all_summary.csv
           git diff --cached --quiet && exit 0
-          git commit -m "Add eight-pair replay results"
+          git commit -m "Add eight-pair one-week replay results"
           git push
