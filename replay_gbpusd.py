@@ -157,8 +157,19 @@ def candidate_at(i):
             tp2,tp2kind=v,kind;break
     if tp1 is None or tp2 is None:return None
 
-    confirmed=(h4b==h1b and h4b==("BULLISH" if direction=="BUY" else "BEARISH"))
-    tier="CONFIRMED_INSTITUTIONAL" if confirmed else "LIQUIDITY_EVENT"
+    wanted="BULLISH" if direction=="BUY" else "BEARISH"
+    # Liquidity-first classification: HTF alignment is a quality tier, not a
+    # mandatory gate. A setup can become executable after an H1 CHoCH/BOS while
+    # H4 is still neutral or transitioning.
+    h1_confirm = h1b==wanted and h1e in ("BOS","CHoCH")
+    h4_support = h4b==wanted
+    htf_aligned = h4b==h1b==wanted
+    if htf_aligned:
+        tier="S_TIER_INSTITUTIONAL"
+    elif h1_confirm and (h4b in ("NEUTRAL", wanted)):
+        tier="A_TIER_INSTITUTIONAL"
+    else:
+        tier="B_TIER_SCOUT"
     return {
         "signal_time":t.isoformat(),"direction":direction,"h4_bias":h4b,
         "h1_bias":h1b,"h4_event":h4e,"h1_event":h1e,
@@ -212,7 +223,7 @@ for i in range(40,len(m15)-20):
     last_event=i
     outcome,rr,exit_i=evaluate(s)
     candidates.append({k:v for k,v in s.items() if k not in {"signal_i","disp_i","ob_i"}})
-    if s["tier"]!="CONFIRMED_INSTITUTIONAL":continue
+    if s["tier"] not in ("S_TIER_INSTITUTIONAL","A_TIER_INSTITUTIONAL"):continue
     results.append({
         **{k:v for k,v in s.items() if k not in {"signal_i","disp_i","ob_i"}},
         "outcome":outcome,"realized_R":"" if rr is None else round(rr,2),
@@ -229,7 +240,9 @@ write(OUT,results)
 
 print("LIQUIDITY EVENTS",len(candidates))
 print("CANDIDATE TIERS",dict(Counter(x["tier"] for x in candidates)))
-print("CONFIRMED SETUPS",len(results))
+print("INSTITUTIONAL SETUPS",len(results))
+print("S-TIER",sum(1 for x in results if x["tier"]=="S_TIER_INSTITUTIONAL"))
+print("A-TIER",sum(1 for x in results if x["tier"]=="A_TIER_INSTITUTIONAL"))
 print("OUTCOMES",dict(Counter(x["outcome"] for x in results)))
 print("\nCONFIRMED RESULTS")
 for x in results:print(x)
