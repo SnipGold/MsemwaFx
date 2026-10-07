@@ -105,19 +105,21 @@ def find_candidate(m15,h1,h4,symbol,i):
     aligned=h4b==h1b==wanted
     h1confirm=h1b==wanted and h1e in ("BOS","CHoCH")
 
-    # Moderate reversal gate matching the live engine. This keeps
-    # liquidity-first behavior without treating every counter-trend reaction
-    # as an institutional reversal.
+    # Balanced reversal gate matching the live decision engine.
+    # Counter-HTF reversals are institutional only when H1/H4 provides a
+    # structural BOS/CHoCH confirmation. A counter-trend reaction with no
+    # structural event remains Scout.
     htf_has_context=h4b in ("BULLISH","BEARISH") or h1b in ("BULLISH","BEARISH")
     reversal_confirmed = (
         (h1b==wanted and h1e in ("BOS","CHoCH"))
+        or (h1b=="NEUTRAL" and h4b!=wanted and h4b in ("BULLISH","BEARISH") and h4e in ("BOS","CHoCH"))
         or (h4b=="NEUTRAL" and h1b!=wanted and h1e=="CHoCH")
-        or (h4b!=wanted and h4b in ("BULLISH","BEARISH") and h1b=="NEUTRAL" and h4e in ("BOS","CHoCH"))
+        or (h4b!=wanted and h4b in ("BULLISH","BEARISH") and h1b!=wanted and h1e in ("BOS","CHoCH"))
     )
-    early_reversal = htf_has_context and h4b!=wanted and reversal_confirmed
+    balanced_reversal = htf_has_context and h4b!=wanted and reversal_confirmed
     if aligned:tier,stype="S_TIER","CONTINUATION"
     elif h1confirm:tier,stype="A_CONTINUATION","CONTINUATION"
-    elif early_reversal:tier,stype="A_REVERSAL","REVERSAL"
+    elif balanced_reversal:tier,stype="A_REVERSAL","REVERSAL"
     else:tier,stype="B_SCOUT","SCOUT"
     return {"pair":symbol,"signal_time":t.isoformat(),"direction":direction,"h4_bias":h4b,"h1_bias":h1b,"h1_event":h1e,"tier":tier,"setup_type":stype,"entry":round(entry,6),"sl":round(sl,6),"risk_pips":round(risk/ps,1),"tp1":round(tp1,6),"tp2":round(tp2,6),"tp1_rr":round(abs(tp1-entry)/risk,2),"tp2_rr":round(abs(tp2-entry)/risk,2),"signal_i":i,"disp_i":disp}
 
