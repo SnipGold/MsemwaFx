@@ -164,16 +164,31 @@ def candidate_at(i):
     h1_confirm = h1b==wanted and h1e in ("BOS","CHoCH")
     h4_support = h4b==wanted
     htf_aligned = h4b==h1b==wanted
+
+    # Continuation: HTF direction agrees with the M15 liquidity reaction.
+    continuation = h1_confirm and (h4b in (wanted, "NEUTRAL"))
+
+    # Reversal: HTF is opposite/neutral, but liquidity was swept and H1
+    # confirms the new direction. This tests whether liquidity removal plus
+    # structural change can legitimately precede an HTF bias flip.
+    reversal = h1_confirm and h4b in (("BEARISH" if wanted=="BULLISH" else "BULLISH"), "NEUTRAL")
+
     if htf_aligned:
         tier="S_TIER_INSTITUTIONAL"
-    elif h1_confirm and (h4b in ("NEUTRAL", wanted)):
-        tier="A_TIER_INSTITUTIONAL"
+        setup_type="CONTINUATION"
+    elif continuation:
+        tier="A_TIER_CONTINUATION"
+        setup_type="CONTINUATION"
+    elif reversal and h1e in ("BOS","CHoCH"):
+        tier="A_TIER_REVERSAL"
+        setup_type="REVERSAL"
     else:
         tier="B_TIER_SCOUT"
+        setup_type="SCOUT"
     return {
         "signal_time":t.isoformat(),"direction":direction,"h4_bias":h4b,
         "h1_bias":h1b,"h4_event":h4e,"h1_event":h1e,
-        "tier":tier,"sweep":sweep,"displacement_time":m15[disp]["time"].isoformat(),
+        "tier":tier,"setup_type":setup_type,"sweep":sweep,"displacement_time":m15[disp]["time"].isoformat(),
         "ob_time":m15[ob]["time"].isoformat(),"entry":round(entry,5),
         "sl":round(sl,5),"risk_pips":round(risk*10000,1),
         "tp1":round(tp1,5),"tp2":round(tp2,5),
@@ -223,7 +238,7 @@ for i in range(40,len(m15)-20):
     last_event=i
     outcome,rr,exit_i=evaluate(s)
     candidates.append({k:v for k,v in s.items() if k not in {"signal_i","disp_i","ob_i"}})
-    if s["tier"] not in ("S_TIER_INSTITUTIONAL","A_TIER_INSTITUTIONAL"):continue
+    if s["tier"] not in ("S_TIER_INSTITUTIONAL","A_TIER_CONTINUATION","A_TIER_REVERSAL"):continue
     results.append({
         **{k:v for k,v in s.items() if k not in {"signal_i","disp_i","ob_i"}},
         "outcome":outcome,"realized_R":"" if rr is None else round(rr,2),
@@ -242,7 +257,8 @@ print("LIQUIDITY EVENTS",len(candidates))
 print("CANDIDATE TIERS",dict(Counter(x["tier"] for x in candidates)))
 print("INSTITUTIONAL SETUPS",len(results))
 print("S-TIER",sum(1 for x in results if x["tier"]=="S_TIER_INSTITUTIONAL"))
-print("A-TIER",sum(1 for x in results if x["tier"]=="A_TIER_INSTITUTIONAL"))
+print("A-TIER CONTINUATION",sum(1 for x in results if x["tier"]=="A_TIER_CONTINUATION"))
+print("A-TIER REVERSAL",sum(1 for x in results if x["tier"]=="A_TIER_REVERSAL"))
 print("OUTCOMES",dict(Counter(x["outcome"] for x in results)))
 print("\nCONFIRMED RESULTS")
 for x in results:print(x)
