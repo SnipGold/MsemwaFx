@@ -12,7 +12,8 @@ from modules.notifier import (
     send_telegram_scout,
     send_whatsapp,
 )
-from modules.timeframes import build_htf, parse_time\nfrom modules.structure import analyze_structure
+from modules.timeframes import build_htf, parse_time
+from modules.structure import analyze_structure
 from modules.twelvedata import get_candles
 
 CACHE_DIR = "data_cache"
@@ -164,8 +165,6 @@ def run():
         expiry_time = signal_time + timedelta(minutes=15 * SETUP_EXPIRY_CANDLES)
         setup["expiry_time"] = expiry_time.strftime("%Y-%m-%d %H:%M UTC")
 
-        # Stable identity: SL/TP can be refined internally, but the same
-        # liquidity event must not become a brand-new setup every scan.
         setup_key = "|".join([
             symbol,
             setup["direction"],
