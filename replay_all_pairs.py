@@ -9,7 +9,7 @@ SUMMARY=Path("replay_all_summary.csv")
 
 PAIRS={
  "EURUSD":"EUR/USD","EURJPY":"EUR/JPY","GBPUSD":"GBP/USD","AUDUSD":"AUD/USD",
- "USDCHF":"USD/CHF","USDCAD":"USD/CAD","XAUUSD":"XAU/USD","NZDUSD":"NZD/USD",
+ "USDCHF":"USD/CHF","USDCAD":"USD/CAD","NZDUSD":"NZD/USD",
 }
 
 def load(path):
@@ -104,10 +104,22 @@ def find_candidate(m15,h1,h4,symbol,i):
     wanted="BULLISH" if direction=="BUY" else "BEARISH"
     aligned=h4b==h1b==wanted
     h1confirm=h1b==wanted and h1e in ("BOS","CHoCH")
-    reversal=(h4b in ("NEUTRAL","BULLISH","BEARISH") and h4b!=wanted and disp>i)
+
+    # Moderate reversal gate: liquidity sweep + displacement are necessary,
+    # but avoid treating every counter-trend reaction as an institutional reversal.
+    # Allow early reversals when H4 is neutral, or when H1 has a real structure event.
+    htf_has_context=h4b in ("BULLISH","BEARISH") or h1b in ("BULLISH","BEARISH")
+    early_reversal = (
+        htf_has_context
+        and h4b != wanted
+        and (
+            h4b == "NEUTRAL"
+            or h1e in ("BOS","CHoCH")
+        )
+    )
     if aligned:tier,stype="S_TIER","CONTINUATION"
     elif h1confirm:tier,stype="A_CONTINUATION","CONTINUATION"
-    elif reversal and (h1b in ("BULLISH","BEARISH") or h4b in ("BULLISH","BEARISH")):tier,stype="A_REVERSAL","REVERSAL"
+    elif early_reversal:tier,stype="A_REVERSAL","REVERSAL"
     else:tier,stype="B_SCOUT","SCOUT"
     return {"pair":symbol,"signal_time":t.isoformat(),"direction":direction,"h4_bias":h4b,"h1_bias":h1b,"h1_event":h1e,"tier":tier,"setup_type":stype,"entry":round(entry,6),"sl":round(sl,6),"risk_pips":round(risk/ps,1),"tp1":round(tp1,6),"tp2":round(tp2,6),"tp1_rr":round(abs(tp1-entry)/risk,2),"tp2_rr":round(abs(tp2-entry)/risk,2),"signal_i":i,"disp_i":disp}
 
