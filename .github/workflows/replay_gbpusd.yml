@@ -1,0 +1,43 @@
+name: GBPUSD Historical Replay Data
+
+on:
+  push:
+    paths:
+      - ".github/workflows/replay_gbpusd.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download GBPUSD M15, H1 and H4 from Twelve Data
+        env:
+          TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p replay_data
+
+          for spec in "15min|GBPUSD_15min.csv" "1h|GBPUSD_1h.csv" "4h|GBPUSD_4h.csv"; do
+            interval="${spec%%|*}"
+            file="${spec##*|}"
+            curl --fail --silent --show-error --location \
+              "https://api.twelvedata.com/time_series?symbol=GBP%2FUSD&interval=${interval}&start_date=2026-09-23T00:00:00&end_date=2026-10-07T23:59:59&timezone=UTC&order=asc&format=CSV&apikey=${TWELVEDATA_API_KEY}" \
+              -o "replay_data/${file}"
+            echo "${file}: $(wc -l < "replay_data/${file}") rows"
+            head -n 2 "replay_data/${file}"
+          done
+
+      - name: Save replay data
+        run: |
+          git config user.name "msemwafx-replay"
+          git config user.email "msemwafx-replay@users.noreply.github.com"
+          git add replay_data/*.csv
+          git diff --cached --quiet && exit 0
+          git commit -m "Add GBPUSD historical replay data"
+          git push
