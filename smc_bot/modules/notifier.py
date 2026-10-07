@@ -81,3 +81,48 @@ def format_alert(symbol, setup, candle_time, current_price, entry_status, instru
         f"*Signal Candle:* {candle_time}\n\n"
         f"_MsemwaFx — H4/H1 → M15_"
     )
+
+
+def send_telegram_scout(msg):
+    bot = os.getenv("TELEGRAM_SCOUT_BOT_TOKEN")
+    chat = os.getenv("TELEGRAM_CHAT_ID")
+
+    if not bot or not chat:
+        print("Scout Telegram credentials missing.")
+        return False
+
+    try:
+        r = requests.post(
+            f"https://api.telegram.org/bot{bot}/sendMessage",
+            json={
+                "chat_id": chat,
+                "text": msg,
+                "parse_mode": "Markdown",
+            },
+            timeout=20,
+        )
+        print(f"Scout Telegram HTTP {r.status_code}")
+        if r.status_code != 200:
+            print(r.text[:300])
+        return r.status_code == 200
+    except requests.RequestException as exc:
+        print(f"Scout Telegram failed: {exc}")
+        return False
+
+
+def format_scout(symbol, h4, h1, current_price, m15_time):
+    direction = "BUY" if h4["bias"] == "BULLISH" else "SELL"
+    return (
+        f"👀 *MsemwaFx Scout — Setup Developing*\n\n"
+        f"*Pair:* {symbol}\n"
+        f"*Watch Direction:* {direction}\n"
+        f"*H4 Bias:* {h4['bias']}\n"
+        f"*H4 Structure:* {h4.get('event', 'NONE')}\n"
+        f"*H1 Bias:* {h1['bias']}\n"
+        f"*H1 Structure:* {h1.get('event', 'NONE')}\n\n"
+        f"📍 *Current Price:* {current_price}\n"
+        f"⏱️ *M15 Candle:* {m15_time}\n\n"
+        f"*Status:* WATCH — waiting for M15 liquidity sweep, displacement and valid OB/FVG.\n"
+        f"*Action:* Do not enter from Scout alert. Wait for Institutional confirmation.\n\n"
+        f"_MsemwaFx Scout — H4/H1 → M15_"
+    )
