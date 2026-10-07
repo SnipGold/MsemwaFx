@@ -1,0 +1,52 @@
+name: Run Eight Pair Liquidity Replay
+
+on:
+  push:
+    paths:
+      - "replay_data/*.csv"
+      - "replay_all_pairs.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run eight-pair replay
+        run: python replay_all_pairs.py
+      - name: Notify Scout
+        env:
+          TELEGRAM_SCOUT_BOT_TOKEN: ${{ secrets.TELEGRAM_SCOUT_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python - <<'PY'
+          import os,requests,csv
+          from collections import Counter
+          with open('replay_all_summary.csv',newline='') as f: rows=list(csv.DictReader(f))
+          def n(k): return sum(int(x[k] or 0) for x in rows)
+          msg=('🧪 MsemwaFx 8-PAIR REPLAY COMPLETE\n\n'
+               f'Liquidity Events: {n("liquidity_events")}\n'
+               f'Institutional Setups: {n("institutional_setups")}\n'
+               f'Entries Triggered: {n("entries")}\n'
+               f'Missed: {n("missed")}\n'
+               f'Invalidated: {n("invalidated")}\n'
+               f'TP2 Wins: {n("tp2_wins")}\n'
+               f'TP1→SL: {n("tp1_then_sl")}\n\n'
+               + '\n'.join(f'{x["pair"]}: {x["institutional_setups"]} setups / {x["entries"]} entries' for x in rows))
+          token=os.environ['TELEGRAM_SCOUT_BOT_TOKEN'];chat=os.environ['TELEGRAM_CHAT_ID']
+          r=requests.post(f'https://api.telegram.org/bot{token}/sendMessage',json={'chat_id':chat,'text':msg},timeout=20)
+          print(r.status_code,r.text[:500])
+          r.raise_for_status()
+          PY
+      - name: Save replay results
+        run: |
+          git config user.name "msemwafx-replay"
+          git config user.email "msemwafx-replay@users.noreply.github.com"
+          git add replay_all_results.csv replay_all_summary.csv
+          git diff --cached --quiet && exit 0
+          git commit -m "Add eight-pair replay results"
+          git push
