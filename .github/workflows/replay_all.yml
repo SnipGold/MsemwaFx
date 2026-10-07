@@ -15,7 +15,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Download 7-pair M15 H1 H4 data from Twelve Data
+      - name: Download 8-pair M15 H1 H4 data for one-week replay
         env:
           TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
         run: |
@@ -29,6 +29,7 @@ jobs:
             "USD/CHF|USDCHF"
             "USD/CAD|USDCAD"
             "NZD/USD|NZDUSD"
+            "USD/JPY|USDJPY"
           )
           n=0
           for spec in "${specs[@]}"; do
@@ -38,13 +39,11 @@ jobs:
               file="replay_data/${code}_${interval}.csv"
               echo "Downloading ${symbol} ${interval}"
               encoded=$(printf '%s' "$symbol" | sed 's#/#%2F#g')
-              curl --fail --silent --show-error --location \
-                "https://api.twelvedata.com/time_series?symbol=${encoded}&interval=${interval}&start_date=2026-09-23T00:00:00&end_date=2026-10-07T23:59:59&timezone=UTC&order=asc&format=CSV&apikey=${TWELVEDATA_API_KEY}" \
-                -o "${file}"
+              curl --fail --silent --show-error --location                 "https://api.twelvedata.com/time_series?symbol=${encoded}&interval=${interval}&start_date=2026-10-01T00:00:00&end_date=2026-10-07T23:59:59&timezone=UTC&order=asc&format=CSV&apikey=${TWELVEDATA_API_KEY}"                 -o "${file}"
               test "$(wc -l < "${file}")" -gt 2
               echo "${file}: $(wc -l < "${file}") rows"
               n=$((n+1))
-              if [ "$n" -lt 21 ]; then sleep 9; fi
+              if [ "$n" -lt 24 ]; then sleep 9; fi
             done
           done
       - name: Save replay data
@@ -53,7 +52,5 @@ jobs:
           git config user.email "msemwafx-replay@users.noreply.github.com"
           git add replay_data/*.csv
           git diff --cached --quiet && exit 0
-          git commit -m "Add eight-pair historical replay data"
+          git commit -m "Add USDJPY one-week replay data"
           git push
-
-# replay trigger refresh
