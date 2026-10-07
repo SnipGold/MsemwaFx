@@ -165,13 +165,26 @@ def candidate_at(i):
     h4_support = h4b==wanted
     htf_aligned = h4b==h1b==wanted
 
-    # Continuation: HTF direction agrees with the M15 liquidity reaction.
+    # The displacement candle itself already proves a local structure break:
+    # it closes beyond the previous 5 M15 highs/lows. Use that as the early
+    # reversal confirmation instead of waiting for H1 to flip.
+    disp_bar = m15[disp]
+    disp_prev = m15[max(0,disp-5):disp]
+    m15_shift = bool(disp_prev) and (
+        (direction=="BUY" and disp_bar["close"]>max(x["high"] for x in disp_prev))
+        or
+        (direction=="SELL" and disp_bar["close"]<min(x["low"] for x in disp_prev))
+    )
+
+    # Continuation: HTF/H1 direction agrees with the liquidity reaction.
     continuation = h1_confirm and (h4b in (wanted, "NEUTRAL"))
 
-    # Reversal: HTF is opposite/neutral, but liquidity was swept and H1
-    # confirms the new direction. This tests whether liquidity removal plus
-    # structural change can legitimately precede an HTF bias flip.
-    reversal = h1_confirm and h4b in (("BEARISH" if wanted=="BULLISH" else "BULLISH"), "NEUTRAL")
+    # Reversal: the old HTF direction is opposite (or still neutral), but
+    # liquidity was swept and M15 has already displaced through local structure.
+    reversal = m15_shift and h4b in (
+        "NEUTRAL",
+        "BEARISH" if wanted=="BULLISH" else "BULLISH",
+    )
 
     if htf_aligned:
         tier="S_TIER_INSTITUTIONAL"
