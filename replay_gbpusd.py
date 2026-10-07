@@ -39,19 +39,24 @@ def body(r):
 
 def bias_at(rows, t, lookback=12):
     x = [r for r in rows if r["time"] <= t]
-    if len(x) < lookback + 5:
+    if len(x) < 8:
         return "NEUTRAL"
     x = x[-lookback:]
-    highs = [r["high"] for r in x]
-    lows = [r["low"] for r in x]
-    c = x[-1]["close"]
-    mid = (max(highs)+min(lows))/2
-    # Trend + structural sequence, intentionally conservative.
-    hh = sum(highs[i] > highs[i-1] for i in range(1,len(highs)))
-    ll = sum(lows[i] < lows[i-1] for i in range(1,len(lows)))
-    if c > mid and hh >= ll + 2:
+    recent = x[-4:]
+    hi = max(r["high"] for r in recent)
+    lo = min(r["low"] for r in recent)
+    c = recent[-1]["close"]
+    rng = hi - lo
+    if rng <= 0:
+        return "NEUTRAL"
+    pos = (c - lo) / rng
+    up = sum(recent[i]["close"] > recent[i-1]["close"] for i in range(1,len(recent)))
+    dn = sum(recent[i]["close"] < recent[i-1]["close"] for i in range(1,len(recent)))
+    # HTF campaign bias: recent displacement/close location, not just a
+    # mechanical HH/LL count. This allows a pullback inside an intact trend.
+    if pos >= 0.62 and up >= 2:
         return "BULLISH"
-    if c < mid and ll >= hh + 2:
+    if pos <= 0.38 and dn >= 2:
         return "BEARISH"
     return "NEUTRAL"
 
@@ -91,11 +96,13 @@ def find_setup(i):
 
     a = atr(m15, i, 14)
     med_body = median(body(x) for x in m15[max(1,i-20):i])
-    # Search for displacement after the sweep.
+    # Search for displacement on the sweep candle or within the next 3 candles.
     disp = None
-    for j in range(i+1, min(i+4, len(m15))):
+    for j in range(i, min(i+4, len(m15))):
         q = m15[j]
         recent = m15[max(0,j-5):j]
+        if not recent:
+            continue
         if sweep_dir == "BUY":
             broke = q["close"] > max(x["high"] for x in recent)
             strong = q["close"] > q["open"] and body(q) >= max(med_body*1.15, a*0.45)
