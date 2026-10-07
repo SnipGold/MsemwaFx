@@ -5,8 +5,8 @@ from datetime import datetime, timedelta, timezone
 
 from config import M15_OUTPUTSIZE, SENT_TTL, SETUP_EXPIRY_CANDLES, SYMBOLS
 from modules.decision_engine import analyze_pair_diagnostic
-from modules.notifier import format_alert, send_telegram, send_whatsapp
-from modules.timeframes import build_htf, parse_time
+from modules.notifier import (\n    format_alert,\n    format_scout,\n    send_telegram,\n    send_telegram_scout,\n    send_whatsapp,\n)
+from modules.timeframes import build_htf, parse_time\nfrom modules.structure import analyze_structure
 from modules.twelvedata import get_candles
 
 CACHE_DIR = "data_cache"
