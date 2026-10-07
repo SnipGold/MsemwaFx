@@ -1,279 +1,235 @@
 import csv
 from datetime import datetime, timedelta
-from statistics import median
 from pathlib import Path
+from collections import Counter
 
-ROOT = Path("replay_data")  # historical GBPUSD replay
+ROOT = Path("replay_data")
 OUT = Path("replay_results.csv")
+CANDIDATES_OUT = Path("replay_candidates.csv")
 
 def load(path):
-    rows = []
-    with open(path, newline="") as f:
-        for r in csv.DictReader(f, delimiter=";"):
+    rows=[]
+    with open(path,newline="") as f:
+        for r in csv.DictReader(f,delimiter=";"):
             rows.append({
-                "time": datetime.fromisoformat(r["datetime"]),
-                "open": float(r["open"]),
-                "high": float(r["high"]),
-                "low": float(r["low"]),
-                "close": float(r["close"]),
+                "time":datetime.fromisoformat(r["datetime"]),
+                "open":float(r["open"]),"high":float(r["high"]),
+                "low":float(r["low"]),"close":float(r["close"]),
             })
-    return rows
+    return sorted(rows,key=lambda x:x["time"])
 
-m15 = load(ROOT / "GBPUSD_15min.csv")
-h1 = load(ROOT / "GBPUSD_1h.csv")
-h4 = load(ROOT / "GBPUSD_4h.csv")
+m15=load(ROOT/"GBPUSD_15min.csv")
+h1=load(ROOT/"GBPUSD_1h.csv")
+h4=load(ROOT/"GBPUSD_4h.csv")
 
-def atr(rows, i, n=14):
-    if i < 1:
-        return 0.0
-    vals = []
-    start = max(1, i-n+1)
-    for j in range(start, i+1):
+def atr(rows,i,n=14):
+    if i<1:return 0.0
+    vals=[]
+    for j in range(max(1,i-n+1),i+1):
         vals.append(max(rows[j]["high"]-rows[j]["low"],
                         abs(rows[j]["high"]-rows[j-1]["close"]),
                         abs(rows[j]["low"]-rows[j-1]["close"])))
     return sum(vals)/len(vals)
 
-def body(r):
-    return abs(r["close"]-r["open"])
+def structure_bias(rows):
+    if len(rows)<12:return "NEUTRAL","NONE"
+    highs=[];lows=[]
+    for i in range(2,len(rows)-2):
+        if rows[i]["high"]>rows[i-1]["high"] and rows[i]["high"]>rows[i-2]["high"] and rows[i]["high"]>rows[i+1]["high"] and rows[i]["high"]>rows[i+2]["high"]:
+            highs.append((i,rows[i]["high"]))
+        if rows[i]["low"]<rows[i-1]["low"] and rows[i]["low"]<rows[i-2]["low"] and rows[i]["low"]<rows[i+1]["low"] and rows[i]["low"]<rows[i+2]["low"]:
+            lows.append((i,rows[i]["low"]))
+    recent=rows[-24:]
+    hi=max(x["high"] for x in recent);lo=min(x["low"] for x in recent)
+    rng=max(hi-lo,1e-12);close=rows[-1]["close"]
+    score=0
+    if len(highs)>=2: score += 1 if highs[-1][1]>highs[-2][1] else -1
+    if len(lows)>=2: score += 1 if lows[-1][1]>lows[-2][1] else -1
+    last_high=highs[-1][1] if highs else None
+    last_low=lows[-1][1] if lows else None
+    bull=last_high is not None and close>last_high
+    bear=last_low is not None and close<last_low
+    look=min(6,len(rows)-1)
+    momentum=close-rows[-1-look]["close"]
+    threshold=rng*.08
+    pos=(close-lo)/rng
+    if bull and not bear:return "BULLISH","BOS"
+    if bear and not bull:return "BEARISH","BOS"
+    if score>=2:return "BULLISH","CHoCH" if momentum<0 else "NONE"
+    if score<=-2:return "BEARISH","CHoCH" if momentum>0 else "NONE"
+    if score==1 and (momentum>threshold or pos>.58):return "BULLISH","CHoCH" if momentum>threshold else "NONE"
+    if score==-1 and (momentum<-threshold or pos<.42):return "BEARISH","CHoCH" if momentum<-threshold else "NONE"
+    if pos>.62 and momentum>threshold:return "BULLISH","NONE"
+    if pos<.38 and momentum<-threshold:return "BEARISH","NONE"
+    return "NEUTRAL","NONE"
 
-def bias_at(rows, t, lookback=12):
-    x = [r for r in rows if r["time"] <= t]
-    if len(x) < 8:
-        return "NEUTRAL"
-    x = x[-lookback:]
-    recent = x[-4:]
-    hi = max(r["high"] for r in recent)
-    lo = min(r["low"] for r in recent)
-    c = recent[-1]["close"]
-    rng = hi - lo
-    if rng <= 0:
-        return "NEUTRAL"
-    pos = (c - lo) / rng
-    up = sum(recent[i]["close"] > recent[i-1]["close"] for i in range(1,len(recent)))
-    dn = sum(recent[i]["close"] < recent[i-1]["close"] for i in range(1,len(recent)))
-    # HTF campaign bias: recent displacement/close location, plus a
-    # liquidity-sweep transition candle. This keeps a reversal valid before
-    # the higher timeframe has printed several new HH/HLs.
-    last = recent[-1]
-    prev = x[-5:-1]
-    if prev:
-        prev_low = min(r["low"] for r in prev)
-        prev_high = max(r["high"] for r in prev)
-        if last["low"] < prev_low and last["close"] > last["open"] and pos >= 0.55:
-            return "BULLISH"
-        if last["high"] > prev_high and last["close"] < last["open"] and pos <= 0.45:
-            return "BEARISH"
-    if pos >= 0.55 and up >= 2:
-        return "BULLISH"
-    if pos <= 0.45 and dn >= 2:
-        return "BEARISH"
-    return "NEUTRAL"
+def closed_before(rows,t,duration_hours):
+    # A HTF candle is usable only after it has fully closed.
+    return [r for r in rows if r["time"]+timedelta(hours=duration_hours)<=t]
 
-def htf_bias(t):
-    a = bias_at(h4, t, 8)
-    b = bias_at(h1, t, 12)
-    if a == b and a != "NEUTRAL":
-        return a
-    return "NEUTRAL"
+def htf_state(t):
+    a=closed_before(h4,t,4);b=closed_before(h1,t,1)
+    hb,he=structure_bias(a);ib,ie=structure_bias(b)
+    return hb,he,ib,ie
 
-def known_levels(rows, i, direction):
-    # Levels visible before the signal only.
-    x = rows[max(0, i-96):i]
-    if direction == "BUY":
-        vals = [r["high"] for r in x]
-        return sorted(set(round(v,5) for v in vals if v > rows[i]["close"]))
-    vals = [r["low"] for r in x]
-    return sorted(set(round(v,5) for v in vals if v < rows[i]["close"]), reverse=True)
+def body(r):return abs(r["close"]-r["open"])
 
-def find_setup(i):
-    if i < 40:
-        return None
-    r = m15[i]
-    bias = htf_bias(r["time"])
-    if bias == "NEUTRAL":
-        return None
-    look = m15[max(0,i-8):i]
-    prior_low = min(x["low"] for x in look)
-    prior_high = max(x["high"] for x in look)
-    sweep_dir = None
-    if bias == "BULLISH" and r["low"] < prior_low and r["close"] > prior_low:
-        sweep_dir = "BUY"
-    elif bias == "BEARISH" and r["high"] > prior_high and r["close"] < prior_high:
-        sweep_dir = "SELL"
-    if not sweep_dir:
-        return None
+def levels_before(i,direction,entry):
+    x=m15[max(0,i-100):i]
+    vals=[]
+    # Swing liquidity
+    for j in range(2,len(x)-2):
+        if direction=="BUY" and x[j]["high"]>x[j-1]["high"] and x[j]["high"]>x[j+1]["high"]:
+            v=x[j]["high"]
+            if v>entry:vals.append(("SWING_HIGH",v))
+        if direction=="SELL" and x[j]["low"]<x[j-1]["low"] and x[j]["low"]<x[j+1]["low"]:
+            v=x[j]["low"]
+            if v<entry:vals.append(("SWING_LOW",v))
+    # Equal liquidity
+    tol=.0002
+    for j in range(max(0,len(x)-80),len(x)-1):
+        for k in range(j+1,min(len(x),j+12)):
+            a=x[j]["high"] if direction=="BUY" else x[j]["low"]
+            b=x[k]["high"] if direction=="BUY" else x[k]["low"]
+            if abs(a-b)<=tol:
+                v=max(a,b) if direction=="BUY" else min(a,b)
+                if (direction=="BUY" and v>entry) or (direction=="SELL" and v<entry):
+                    vals.append(("EQUAL_LIQUIDITY",v))
+    uniq={}
+    for kind,v in vals:uniq[round(v,5)]=(kind,v)
+    return sorted(uniq.values(),key=lambda z:z[1],reverse=direction=="SELL")
 
-    a = atr(m15, i, 14)
-    med_body = median(body(x) for x in m15[max(1,i-20):i])
-    # Search for displacement on the sweep candle or within the next 3 candles.
-    disp = None
-    for j in range(i, min(i+4, len(m15))):
-        q = m15[j]
-        recent = m15[max(0,j-5):j]
-        if not recent:
-            continue
-        if sweep_dir == "BUY":
-            broke = q["close"] > max(x["high"] for x in recent)
-            strong = q["close"] > q["open"] and body(q) >= max(med_body*1.15, a*0.45)
+def candidate_at(i):
+    if i<40 or m15[i]["time"].weekday()>=5:return None
+    t=m15[i]["time"]
+    h4b,h4e,h1b,h1e=htf_state(t)
+    # First detect liquidity event without using future HTF information.
+    look=m15[max(0,i-8):i]
+    pl=min(x["low"] for x in look);ph=max(x["high"] for x in look)
+    direction=None;sweep=None
+    if m15[i]["low"]<pl and m15[i]["close"]>pl:
+        direction="BUY";sweep="SELL_SIDE_SWEEP"
+    elif m15[i]["high"]>ph and m15[i]["close"]<ph:
+        direction="SELL";sweep="BUY_SIDE_SWEEP"
+    if not direction:return None
+
+    a=atr(m15,i)
+    med=sum(body(x) for x in m15[max(1,i-20):i])/min(20,i)
+    disp=None
+    for j in range(i,min(i+4,len(m15))):
+        prev=m15[max(0,j-5):j]
+        if not prev:continue
+        if direction=="BUY":
+            broke=m15[j]["close"]>max(x["high"] for x in prev)
+            strong=m15[j]["close"]>m15[j]["open"] and body(m15[j])>=max(med*1.15,a*.45)
         else:
-            broke = q["close"] < min(x["low"] for x in recent)
-            strong = q["close"] < q["open"] and body(q) >= max(med_body*1.15, a*0.45)
-        if broke and strong:
-            disp = j
-            break
-    if disp is None:
-        return None
+            broke=m15[j]["close"]<min(x["low"] for x in prev)
+            strong=m15[j]["close"]<m15[j]["open"] and body(m15[j])>=max(med*1.15,a*.45)
+        if broke and strong:disp=j;break
+    if disp is None:return None
 
-    # Structural OB: last opposite candle before displacement, after the sweep.
-    ob = None
-    for j in range(disp-1, i-1, -1):
-        q = m15[j]
-        if sweep_dir == "BUY" and q["close"] < q["open"]:
-            ob = j
-            break
-        if sweep_dir == "SELL" and q["close"] > q["open"]:
-            ob = j
-            break
-    if ob is None:
-        return None
+    ob=None
+    for j in range(disp-1,i-1,-1):
+        q=m15[j]
+        if direction=="BUY" and q["close"]<q["open"]:ob=j;break
+        if direction=="SELL" and q["close"]>q["open"]:ob=j;break
+    if ob is None:return None
 
-    zone_low = m15[ob]["low"]
-    zone_high = m15[ob]["high"]
-    entry = (zone_low + zone_high)/2
+    zl=m15[ob]["low"];zh=m15[ob]["high"];entry=(zl+zh)/2
+    sweep_ext=m15[i]["low"] if direction=="BUY" else m15[i]["high"]
+    sl=sweep_ext-a*.15 if direction=="BUY" else sweep_ext+a*.15
+    risk=entry-sl if direction=="BUY" else sl-entry
+    if risk<=0 or risk>a*2.5:return None
 
-    sweep_extreme = r["low"] if sweep_dir == "BUY" else r["high"]
-    structural_sl = sweep_extreme - a*0.15 if sweep_dir == "BUY" else sweep_extreme + a*0.15
-    risk = entry-structural_sl if sweep_dir == "BUY" else structural_sl-entry
-    if risk <= 0 or risk > a*2.5:
-        return None
+    # Premium/discount based on the visible M15 dealing range.
+    recent=m15[max(0,i-60):i]
+    eq=(max(x["high"] for x in recent)+min(x["low"] for x in recent))/2
+    if direction=="BUY" and entry>eq:return None
+    if direction=="SELL" and entry<eq:return None
 
-    # Liquidity target known before entry: nearest meaningful prior range extreme.
-    levels = known_levels(m15, disp, sweep_dir)
-    if not levels:
-        return None
-    if sweep_dir == "BUY":
-        tp2 = next((v for v in levels if v > entry + risk*2.0), None)
-        if tp2 is None:
-            return None
-        tp1_candidates = [v for v in levels if entry < v < tp2]
-        tp1 = tp1_candidates[0] if tp1_candidates else entry + risk*1.0
-    else:
-        tp2 = next((v for v in levels if v < entry - risk*2.0), None)
-        if tp2 is None:
-            return None
-        tp1_candidates = [v for v in levels if tp2 < v < entry]
-        tp1 = tp1_candidates[0] if tp1_candidates else entry - risk*1.0
+    levels=levels_before(disp,direction,entry)
+    tp1=tp2=None;tp1kind=tp2kind=None
+    for kind,v in levels:
+        rr=abs(v-entry)/risk
+        if tp1 is None and rr>=1.5:
+            tp1,tp1kind=v,kind
+        elif tp1 is not None and rr>=2.0:
+            tp2,tp2kind=v,kind;break
+    if tp1 is None or tp2 is None:return None
 
-    rr2 = abs(tp2-entry)/risk
-    if rr2 < 2.0:
-        return None
-
+    confirmed=(h4b==h1b and h4b==("BULLISH" if direction=="BUY" else "BEARISH"))
+    tier="CONFIRMED_INSTITUTIONAL" if confirmed else "LIQUIDITY_EVENT"
     return {
-        "signal_i": i, "disp_i": disp, "ob_i": ob,
-        "time": r["time"], "direction": sweep_dir, "bias": bias,
-        "sweep": "SELL_SIDE_SWEEP" if sweep_dir=="BUY" else "BUY_SIDE_SWEEP",
-        "entry": entry, "zone_low": zone_low, "zone_high": zone_high,
-        "sl": structural_sl, "risk": risk, "tp1": tp1, "tp2": tp2,
-        "rr2": rr2, "atr": a
+        "signal_time":t.isoformat(),"direction":direction,"h4_bias":h4b,
+        "h1_bias":h1b,"h4_event":h4e,"h1_event":h1e,
+        "tier":tier,"sweep":sweep,"displacement_time":m15[disp]["time"].isoformat(),
+        "ob_time":m15[ob]["time"].isoformat(),"entry":round(entry,5),
+        "sl":round(sl,5),"risk_pips":round(risk*10000,1),
+        "tp1":round(tp1,5),"tp2":round(tp2,5),
+        "tp1_rr":round(abs(tp1-entry)/risk,2),"tp2_rr":round(abs(tp2-entry)/risk,2),
+        "tp1_liquidity":tp1kind,"tp2_liquidity":tp2kind,
+        "signal_i":i,"disp_i":disp,"ob_i":ob
     }
 
 def evaluate(s):
-    # Entry must occur after displacement/OB formation; no hindsight entry.
-    start = s["disp_i"] + 1
-    expiry = min(start + 16, len(m15)-1)
-    for j in range(start, expiry+1):
-        r = m15[j]
-        if s["direction"] == "BUY":
-            if r["low"] <= s["sl"]:
-                return "INVALIDATED", None, j
-            if r["low"] <= s["entry"] <= r["high"]:
-                # Once entry occurs, evaluate future candles.
-                for k in range(j, min(j+48,len(m15))):
-                    q=m15[k]
-                    hit_tp2=q["high"]>=s["tp2"]
-                    hit_tp1=q["high"]>=s["tp1"]
-                    hit_sl=q["low"]<=s["sl"]
-                    if hit_sl and (hit_tp2 or hit_tp1):
-                        return "AMBIGUOUS", 0.0, k
-                    if hit_tp2:
-                        return "TP2", s["rr2"], k
-                    if hit_tp1:
-                        # Keep position open for TP2, but record TP1 milestone.
-                        for z in range(k+1, min(k+48,len(m15))):
-                            w=m15[z]
-                            if w["low"]<=s["sl"]:
-                                return "TP1_THEN_SL", 1.0, z
-                            if w["high"]>=s["tp2"]:
-                                return "TP2_AFTER_TP1", s["rr2"], z
-                        return "TP1", 1.0, k
-                return "OPEN", None, j
+    start=s["disp_i"]+1;expiry=min(start+16,len(m15)-1)
+    for j in range(start,expiry+1):
+        r=m15[j]
+        if s["direction"]=="BUY":
+            if r["low"]<=s["sl"]:return "INVALIDATED",None,j
+            if r["low"]<=s["entry"]<=r["high"]:break
         else:
-            if r["high"] >= s["sl"]:
-                return "INVALIDATED", None, j
-            if r["low"] <= s["entry"] <= r["high"]:
-                for k in range(j, min(j+48,len(m15))):
-                    q=m15[k]
-                    hit_tp2=q["low"]<=s["tp2"]
-                    hit_tp1=q["low"]<=s["tp1"]
-                    hit_sl=q["high"]>=s["sl"]
-                    if hit_sl and (hit_tp2 or hit_tp1):
-                        return "AMBIGUOUS", 0.0, k
-                    if hit_tp2:
-                        return "TP2", s["rr2"], k
-                    if hit_tp1:
-                        for z in range(k+1, min(k+48,len(m15))):
-                            w=m15[z]
-                            if w["high"]>=s["sl"]:
-                                return "TP1_THEN_SL", 1.0, z
-                            if w["low"]<=s["tp2"]:
-                                return "TP2_AFTER_TP1", s["rr2"], z
-                        return "TP1", 1.0, k
-                return "OPEN", None, j
-    return "MISSED", None, expiry
+            if r["high"]>=s["sl"]:return "INVALIDATED",None,j
+            if r["low"]<=s["entry"]<=r["high"]:break
+    else:return "MISSED",None,expiry
+    entry_i=j
+    for k in range(entry_i,min(entry_i+48,len(m15))):
+        q=m15[k]
+        if s["direction"]=="BUY":
+            hit2=q["high"]>=s["tp2"];hit1=q["high"]>=s["tp1"];hitsl=q["low"]<=s["sl"]
+        else:
+            hit2=q["low"]<=s["tp2"];hit1=q["low"]<=s["tp1"];hitsl=q["high"]>=s["sl"]
+        if hitsl and (hit2 or hit1):return "AMBIGUOUS",0.0,k
+        if hit2:return "TP2",s["tp2_rr"],k
+        if hit1:
+            for z in range(k+1,min(k+48,len(m15))):
+                w=m15[z]
+                hitsl=(w["low"]<=s["sl"]) if s["direction"]=="BUY" else (w["high"]>=s["sl"])
+                hit2=(w["high"]>=s["tp2"]) if s["direction"]=="BUY" else (w["low"]<=s["tp2"])
+                if hitsl:return "TP1_THEN_SL",1.0,z
+                if hit2:return "TP2_AFTER_TP1",s["tp2_rr"],z
+            return "TP1",1.0,k
+    return "OPEN",None,entry_i
 
+candidates=[]
 results=[]
-last_signal=-999
-for i in range(40, len(m15)-20):
-    r=m15[i]
-    # Skip weekend data.
-    if r["time"].weekday() >= 5:
-        continue
-    s=find_setup(i)
-    if not s:
-        continue
-    if i-last_signal < 12:
-        continue
-    outcome, rr, exit_i = evaluate(s)
-    if outcome == "MISSED":
-        # Still useful: it was a valid plan but never retraced.
-        pass
+last_event=-999
+for i in range(40,len(m15)-20):
+    s=candidate_at(i)
+    if not s:continue
+    # Same liquidity event should not generate repeated setups.
+    if i-last_event<4:continue
+    last_event=i
+    outcome,rr,exit_i=evaluate(s)
+    candidates.append({k:v for k,v in s.items() if k not in {"signal_i","disp_i","ob_i"}})
+    if s["tier"]!="CONFIRMED_INSTITUTIONAL":continue
     results.append({
-        "signal_time":s["time"].isoformat(),
-        "direction":s["direction"],
-        "htf_bias":s["bias"],
-        "sweep":s["sweep"],
-        "ob_time":m15[s["ob_i"]]["time"].isoformat(),
-        "entry":round(s["entry"],5),
-        "sl":round(s["sl"],5),
-        "risk_pips":round(s["risk"]*10000,1),
-        "tp1":round(s["tp1"],5),
-        "tp2":round(s["tp2"],5),
-        "rr2":round(s["rr2"],2),
-        "outcome":outcome,
-        "realized_R":"" if rr is None else round(rr,2),
-        "exit_time":"" if exit_i is None else m15[exit_i]["time"].isoformat(),
+        **{k:v for k,v in s.items() if k not in {"signal_i","disp_i","ob_i"}},
+        "outcome":outcome,"realized_R":"" if rr is None else round(rr,2),
+        "exit_time":"" if exit_i is None else m15[exit_i]["time"].isoformat()
     })
-    last_signal=i
 
-with open(OUT,"w",newline="") as f:
-    fields=list(results[0].keys()) if results else ["signal_time"]
-    w=csv.DictWriter(f,fieldnames=fields)
-    w.writeheader(); w.writerows(results)
+def write(path,rows):
+    fields=list(rows[0].keys()) if rows else ["signal_time"]
+    with open(path,"w",newline="") as f:
+        w=csv.DictWriter(f,fieldnames=fields);w.writeheader();w.writerows(rows)
 
-print("SETUPS",len(results))
-from collections import Counter
-print("OUTCOMES",dict(Counter(r["outcome"] for r in results)))
-print("DATES")
-for r in results:
-    print(r)
+write(CANDIDATES_OUT,candidates)
+write(OUT,results)
+
+print("LIQUIDITY EVENTS",len(candidates))
+print("CANDIDATE TIERS",dict(Counter(x["tier"] for x in candidates)))
+print("CONFIRMED SETUPS",len(results))
+print("OUTCOMES",dict(Counter(x["outcome"] for x in results)))
+print("\nCONFIRMED RESULTS")
+for x in results:print(x)
