@@ -6,6 +6,7 @@ SYMBOLS = [
     "USD/CHF",
     "USD/CAD",
     "NZD/USD",
+    "USD/JPY",
 ]
 
 LTF = "15min"
