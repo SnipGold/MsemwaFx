@@ -1,2 +1,2 @@
-signal_time,direction,h4_bias,h1_bias,h4_event,h1_event,tier,sweep,displacement_time,ob_time,entry,sl,risk_pips,tp1,tp2,tp1_rr,tp2_rr,tp1_liquidity,tp2_liquidity,outcome,realized_R,exit_time
-2026-09-24T07:45:00,SELL,NEUTRAL,BEARISH,NONE,CHoCH,A_TIER_INSTITUTIONAL,BUY_SIDE_SWEEP,2026-09-24T08:30:00,2026-09-24T07:45:00,1.32512,1.32578,6.6,1.32412,1.32377,1.53,2.06,EQUAL_LIQUIDITY,EQUAL_LIQUIDITY,MISSED,,2026-09-24T12:45:00
+signal_time,direction,h4_bias,h1_bias,h4_event,h1_event,tier,setup_type,sweep,displacement_time,ob_time,entry,sl,risk_pips,tp1,tp2,tp1_rr,tp2_rr,tp1_liquidity,tp2_liquidity,outcome,realized_R,exit_time
+2026-09-24T07:45:00,SELL,NEUTRAL,BEARISH,NONE,CHoCH,A_TIER_CONTINUATION,CONTINUATION,BUY_SIDE_SWEEP,2026-09-24T08:30:00,2026-09-24T07:45:00,1.32512,1.32578,6.6,1.32412,1.32377,1.53,2.06,EQUAL_LIQUIDITY,EQUAL_LIQUIDITY,MISSED,,2026-09-24T12:45:00
