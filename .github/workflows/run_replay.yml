@@ -18,11 +18,41 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run replay
         run: python replay_gbpusd.py
+      - name: Notify Scout
+        env:
+          TELEGRAM_SCOUT_BOT_TOKEN: ${{ secrets.TELEGRAM_SCOUT_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python - <<'PY'
+          import os, requests
+          import csv
+          from collections import Counter
+          with open('replay_candidates.csv', newline='') as f:
+              candidates=list(csv.DictReader(f))
+          with open('replay_results.csv', newline='') as f:
+              results=list(csv.DictReader(f))
+          c=Counter(r.get('outcome','') for r in results)
+          msg=('🧪 MsemwaFx GBPUSD REPLAY COMPLETE\n\n'
+               f'Liquidity Events: {len(candidates)}\n'
+               f'Confirmed Setups: {len(results)}\n'
+               f'Entries Triggered: {sum(1 for r in results if r.get("outcome") not in ("MISSED","INVALIDATED",""))}\n'
+               f'Missed: {c.get("MISSED",0)}\n'
+               f'Invalidated: {c.get("INVALIDATED",0)}\n'
+               f'TP2 Wins: {c.get("TP2",0)+c.get("TP2_AFTER_TP1",0)}\n'
+               f'TP1→SL: {c.get("TP1_THEN_SL",0)}\n'
+               f'Ambiguous: {c.get("AMBIGUOUS",0)}')
+          token=os.environ.get('TELEGRAM_SCOUT_BOT_TOKEN')
+          chat=os.environ.get('TELEGRAM_CHAT_ID')
+          if not token or not chat: raise SystemExit('Scout Telegram credentials missing')
+          r=requests.post(f'https://api.telegram.org/bot{token}/sendMessage',json={'chat_id':chat,'text':msg},timeout=20)
+          print('Scout Telegram HTTP',r.status_code)
+          if r.status_code != 200: raise SystemExit(r.text[:500])
+          PY
       - name: Save results
         run: |
           git config user.name "msemwafx-replay"
           git config user.email "msemwafx-replay@users.noreply.github.com"
-          git add replay_results.csv
+          git add replay_results.csv replay_candidates.csv
           git diff --cached --quiet && exit 0
           git commit -m "Add GBPUSD replay results"
           git push
