@@ -54,9 +54,9 @@ def bias_at(rows, t, lookback=12):
     dn = sum(recent[i]["close"] < recent[i-1]["close"] for i in range(1,len(recent)))
     # HTF campaign bias: recent displacement/close location, not just a
     # mechanical HH/LL count. This allows a pullback inside an intact trend.
-    if pos >= 0.62 and up >= 2:
+    if pos >= 0.55 and up >= 2:
         return "BULLISH"
-    if pos <= 0.38 and dn >= 2:
+    if pos <= 0.45 and dn >= 2:
         return "BEARISH"
     return "NEUTRAL"
 
