@@ -5,7 +5,13 @@ from datetime import datetime, timedelta, timezone
 
 from config import M15_OUTPUTSIZE, SENT_TTL, SETUP_EXPIRY_CANDLES, SYMBOLS
 from modules.decision_engine import analyze_pair_diagnostic
-from modules.notifier import (\n    format_alert,\n    format_scout,\n    send_telegram,\n    send_telegram_scout,\n    send_whatsapp,\n)
+from modules.notifier import (
+    format_alert,
+    format_scout,
+    send_telegram,
+    send_telegram_scout,
+    send_whatsapp,
+)
 from modules.timeframes import build_htf, parse_time\nfrom modules.structure import analyze_structure
 from modules.twelvedata import get_candles
 
@@ -158,14 +164,13 @@ def run():
         expiry_time = signal_time + timedelta(minutes=15 * SETUP_EXPIRY_CANDLES)
         setup["expiry_time"] = expiry_time.strftime("%Y-%m-%d %H:%M UTC")
 
+        # Stable identity: SL/TP can be refined internally, but the same
+        # liquidity event must not become a brand-new setup every scan.
         setup_key = "|".join([
             symbol,
             setup["direction"],
             str(setup["signal_candle"]),
             str(setup["entry"]),
-            str(setup["sl"]),
-            str(setup["tp1"]),
-            str(setup["tp2"]),
         ])
         alert_key = f"{setup_key}|{entry_status}"
 
