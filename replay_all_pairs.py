@@ -163,7 +163,8 @@ with open(OUT,"w",newline="") as f:
 with open(SUMMARY,"w",newline="") as f:
     fields=list(summaries[0].keys());w=csv.DictWriter(f,fieldnames=fields);w.writeheader();w.writerows(summaries)
 
-print("8-PAIR REPLAY")
+# noise-reduced seven-pair replay v2
+print("7-PAIR REPLAY")
 for x in summaries:print(x)
 print("TOTAL LIQUIDITY EVENTS",sum(int(x["liquidity_events"]) for x in summaries))
 print("TOTAL INSTITUTIONAL SETUPS",sum(int(x["institutional_setups"]) for x in summaries))
