@@ -57,7 +57,7 @@ def state(h1,h4,t):
     a,ae=bias(closed(h4,t,4)); b,be=bias(closed(h1,t,1)); return a,ae,b,be
 
 def pip(symbol):
-    return .01 if ("JPY" in symbol or "XAU" in symbol) else .0001
+    return .01 if "JPY" in symbol else .0001
 
 def find_candidate(m15,h1,h4,symbol,i):
     if i<40 or m15[i]["time"].weekday()>=5:return None
@@ -85,7 +85,7 @@ def find_candidate(m15,h1,h4,symbol,i):
     sl=sweep_ext-a*.15 if direction=="BUY" else sweep_ext+a*.15
     risk=abs(entry-sl); ps=pip(symbol)
     if risk<=0:return None
-    spread_pips={"EUR/USD":1.4,"EUR/JPY":1.3,"GBP/USD":1.6,"AUD/USD":1.6,"USD/CHF":1.5,"USD/CAD":1.9,"NZD/USD":1.8,"XAU/USD":.32}.get(symbol,1.5)
+    spread_pips={"EUR/USD":1.4,"EUR/JPY":1.3,"GBP/USD":1.6,"AUD/USD":1.6,"USD/CHF":1.5,"USD/CAD":1.9,"NZD/USD":1.8}.get(symbol,1.5)
     minrisk=max(spread_pips*2*ps,a*.35)
     if risk<minrisk:return None
     recent=m15[max(0,i-60):i]; eq=(max(x["high"] for x in recent)+min(x["low"] for x in recent))/2
@@ -105,18 +105,16 @@ def find_candidate(m15,h1,h4,symbol,i):
     aligned=h4b==h1b==wanted
     h1confirm=h1b==wanted and h1e in ("BOS","CHoCH")
 
-    # Moderate reversal gate: liquidity sweep + displacement are necessary,
-    # but avoid treating every counter-trend reaction as an institutional reversal.
-    # Allow early reversals when H4 is neutral, or when H1 has a real structure event.
+    # Moderate reversal gate matching the live engine. This keeps
+    # liquidity-first behavior without treating every counter-trend reaction
+    # as an institutional reversal.
     htf_has_context=h4b in ("BULLISH","BEARISH") or h1b in ("BULLISH","BEARISH")
-    early_reversal = (
-        htf_has_context
-        and h4b != wanted
-        and (
-            h4b == "NEUTRAL"
-            or h1e in ("BOS","CHoCH")
-        )
+    reversal_confirmed = (
+        (h1b==wanted and h1e in ("BOS","CHoCH"))
+        or (h4b=="NEUTRAL" and h1b!=wanted and h1e=="CHoCH")
+        or (h4b!=wanted and h4b in ("BULLISH","BEARISH") and h1b=="NEUTRAL" and h4e in ("BOS","CHoCH"))
     )
+    early_reversal = htf_has_context and h4b!=wanted and reversal_confirmed
     if aligned:tier,stype="S_TIER","CONTINUATION"
     elif h1confirm:tier,stype="A_CONTINUATION","CONTINUATION"
     elif early_reversal:tier,stype="A_REVERSAL","REVERSAL"
