@@ -1,7 +1,6 @@
 import csv
 from pathlib import Path
 from datetime import datetime, timedelta
-from collections import Counter
 
 ROOT=Path("replay_data")
 OUT=Path("replay_all_results.csv")
@@ -9,7 +8,7 @@ SUMMARY=Path("replay_all_summary.csv")
 
 PAIRS={
  "EURUSD":"EUR/USD","EURJPY":"EUR/JPY","GBPUSD":"GBP/USD","AUDUSD":"AUD/USD",
- "USDCHF":"USD/CHF","USDCAD":"USD/CAD","NZDUSD":"NZD/USD",
+ "USDCHF":"USD/CHF","USDCAD":"USD/CAD","NZDUSD":"NZD/USD","USDJPY":"USD/JPY",
 }
 
 def load(path):
@@ -85,7 +84,7 @@ def find_candidate(m15,h1,h4,symbol,i):
     sl=sweep_ext-a*.15 if direction=="BUY" else sweep_ext+a*.15
     risk=abs(entry-sl); ps=pip(symbol)
     if risk<=0:return None
-    spread_pips={"EUR/USD":1.4,"EUR/JPY":1.3,"GBP/USD":1.6,"AUD/USD":1.6,"USD/CHF":1.5,"USD/CAD":1.9,"NZD/USD":1.8}.get(symbol,1.5)
+    spread_pips={"EUR/USD":1.4,"EUR/JPY":1.3,"GBP/USD":1.6,"AUD/USD":1.6,"USD/CHF":1.5,"USD/CAD":1.9,"NZD/USD":1.8,"USD/JPY":1.5}.get(symbol,1.5)
     minrisk=max(spread_pips*2*ps,a*.35)
     if risk<minrisk:return None
     recent=m15[max(0,i-60):i]; eq=(max(x["high"] for x in recent)+min(x["low"] for x in recent))/2
@@ -104,11 +103,6 @@ def find_candidate(m15,h1,h4,symbol,i):
     wanted="BULLISH" if direction=="BUY" else "BEARISH"
     aligned=h4b==h1b==wanted
     h1confirm=h1b==wanted and h1e in ("BOS","CHoCH")
-
-    # Balanced reversal gate matching the live decision engine.
-    # Counter-HTF reversals are institutional only when H1/H4 provides a
-    # structural BOS/CHoCH confirmation. A counter-trend reaction with no
-    # structural event remains Scout.
     htf_has_context=h4b in ("BULLISH","BEARISH") or h1b in ("BULLISH","BEARISH")
     reversal_confirmed = (
         (h1b==wanted and h1e in ("BOS","CHoCH"))
@@ -116,7 +110,7 @@ def find_candidate(m15,h1,h4,symbol,i):
         or (h4b=="NEUTRAL" and h1b!=wanted and h1e=="CHoCH")
         or (h4b!=wanted and h4b in ("BULLISH","BEARISH") and h1b!=wanted and h1e in ("BOS","CHoCH"))
     )
-    balanced_reversal = htf_has_context and h4b!=wanted and reversal_confirmed
+    balanced_reversal=htf_has_context and h4b!=wanted and reversal_confirmed
     if aligned:tier,stype="S_TIER","CONTINUATION"
     elif h1confirm:tier,stype="A_CONTINUATION","CONTINUATION"
     elif balanced_reversal:tier,stype="A_REVERSAL","REVERSAL"
@@ -165,8 +159,7 @@ with open(OUT,"w",newline="") as f:
 with open(SUMMARY,"w",newline="") as f:
     fields=list(summaries[0].keys());w=csv.DictWriter(f,fieldnames=fields);w.writeheader();w.writerows(summaries)
 
-# noise-reduced seven-pair replay v2
-print("7-PAIR REPLAY")
+print("8-PAIR REPLAY")
 for x in summaries:print(x)
 print("TOTAL LIQUIDITY EVENTS",sum(int(x["liquidity_events"]) for x in summaries))
 print("TOTAL INSTITUTIONAL SETUPS",sum(int(x["institutional_setups"]) for x in summaries))
