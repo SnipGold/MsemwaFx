@@ -15,7 +15,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Download 8-pair M15 H1 H4 data from Twelve Data
+      - name: Download 7-pair M15 H1 H4 data from Twelve Data
         env:
           TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
         run: |
@@ -44,7 +44,7 @@ jobs:
               test "$(wc -l < "${file}")" -gt 2
               echo "${file}: $(wc -l < "${file}") rows"
               n=$((n+1))
-              if [ "$n" -lt 24 ]; then sleep 9; fi
+              if [ "$n" -lt 21 ]; then sleep 9; fi
             done
           done
       - name: Save replay data
