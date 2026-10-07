@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from collections import Counter
 
-ROOT = Path("replay_data")
+ROOT = Path("replay_data")  # GBPUSD liquidity-first replay
 OUT = Path("replay_results.csv")
 CANDIDATES_OUT = Path("replay_candidates.csv")
 
