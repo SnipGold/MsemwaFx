@@ -1,0 +1,33 @@
+name: Reconstruct Old Replay For A-B Comparison
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/reconstruct_old_replay.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  replay_old:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct pre-noise-reduction replay
+        run: |
+          set -euo pipefail
+          git show 288ba0d0f0e53bc976ebf010e0da463ea9a13515:replay_all_pairs.py > /tmp/replay_old.py
+          sed -i 's#OUT=Path("replay_all_results.csv")#OUT=Path("replay_old_results.csv")#' /tmp/replay_old.py
+          sed -i 's#SUMMARY=Path("replay_all_summary.csv")#SUMMARY=Path("replay_old_summary.csv")#' /tmp/replay_old.py
+          python /tmp/replay_old.py
+
+      - name: Save comparison dataset
+        run: |
+          git config user.name "msemwafx-replay"
+          git config user.email "msemwafx-replay@users.noreply.github.com"
+          git add replay_old_results.csv replay_old_summary.csv
+          git commit -m "Add pre-noise-reduction replay for A-B comparison"
+          git push
