@@ -1,2 +1,1 @@
-signal_time,direction,htf_bias,sweep,ob_time,entry,sl,risk_pips,tp1,tp2,rr2,outcome,realized_R,exit_time
-2026-10-01T01:00:00,SELL,BEARISH,BUY_SIDE_SWEEP,2026-10-01T01:15:00,1.32712,1.32731,1.9,1.32693,1.32608,5.4,MISSED,,2026-10-01T06:00:00
+signal_time
