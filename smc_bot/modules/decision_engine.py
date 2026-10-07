@@ -1,6 +1,7 @@
 from config import (
     DEFAULT_LOT_SIZE,
     MIN_ATR_SL_MULTIPLIER,
+    MIN_RISK_ATR_MULTIPLIER,
     MIN_SCORE,
     MIN_SPREAD_MULTIPLIER,
     MIN_TP1_RR,
@@ -56,11 +57,11 @@ def _last_aligned_fvg(candles, signal_index, direction):
     return fvg if fvg["type"] == expected else None
 
 
-def _liquidity_levels(candles, entry, direction, min_distance):
-    """Return meaningful internal/external liquidity levels beyond entry."""
+def _liquidity_levels(candles, entry, direction, min_distance, symbol=None):
     levels = []
     start = max(2, len(candles) - 100)
     end = len(candles) - 2
+    pip = _pip_size(symbol)
 
     for i in range(start, end + 1):
         if direction == "BUY":
@@ -74,8 +75,7 @@ def _liquidity_levels(candles, entry, direction, min_distance):
                 if level < entry - min_distance:
                     levels.append(("SWING_LOW", level))
 
-    # Equal highs/lows are particularly important liquidity pools.
-    tolerance = _pip_size(None) * 2
+    tolerance = pip * 2
     for i in range(start, end):
         a = float(candles[i]["high"] if direction == "BUY" else candles[i]["low"])
         for j in range(i + 1, min(end + 1, i + 12)):
@@ -98,17 +98,25 @@ def _liquidity_levels(candles, entry, direction, min_distance):
     )
 
 
-def analyze_pair_diagnostic(h4_candles, h1_candles, m15_candles, symbol=None):
-    h4 = analyze_structure(h4_candles)
-    h1 = analyze_structure(h1_candles)
+def _direction_candidates(h4_bias, h1_bias):
+    bullish = "BULLISH"
+    bearish = "BEARISH"
 
-    if h4["bias"] == "NEUTRAL" or h1["bias"] == "NEUTRAL":
-        return None, f"HTF NEUTRAL (H4={h4['bias']}, H1={h1['bias']})"
-    if h4["bias"] != h1["bias"]:
-        return None, f"H4/H1 MISMATCH (H4={h4['bias']}, H1={h1['bias']})"
+    if h4_bias == h1_bias and h4_bias in (bullish, bearish):
+        return [h4_bias]
 
-    bias = h4["bias"]
-    direction = "BUY" if bias == "BULLISH" else "SELL"
+    if h1_bias in (bullish, bearish):
+        return [h1_bias, bearish if h1_bias == bullish else bullish]
+
+    if h4_bias in (bullish, bearish):
+        return [h4_bias, bearish if h4_bias == bullish else bullish]
+
+    # With no HTF bias, allow the liquidity engine to find the direction.
+    return [bullish, bearish]
+
+
+def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, symbol):
+    bias = "BULLISH" if direction == "BUY" else "BEARISH"
     ob = detect_order_block(m15_candles, bias)
     if not ob:
         return None, f"NO {bias} SWEEP-LEG OB/DISPLACEMENT"
@@ -144,8 +152,9 @@ def analyze_pair_diagnostic(h4_candles, h1_candles, m15_candles, symbol=None):
 
     spread_price = _reference_spread_price(symbol)
     min_cost = MIN_SPREAD_MULTIPLIER * spread_price
-    if risk < min_cost:
-        return None, "RISK TOO SMALL FOR SPREAD"
+    min_structural_risk = max(min_cost, atr * MIN_RISK_ATR_MULTIPLIER)
+    if risk < min_structural_risk:
+        return None, "STRUCTURAL RISK TOO SMALL FOR ATR/SPREAD"
 
     recent = m15_candles[max(0, len(m15_candles) - 60):]
     dealing_high = max(c["high"] for c in recent)
@@ -158,15 +167,12 @@ def analyze_pair_diagnostic(h4_candles, h1_candles, m15_candles, symbol=None):
         return None, "SELL IN DISCOUNT"
 
     min_target_distance = max(min_cost, risk * MIN_TP1_RR)
-    levels = _liquidity_levels(m15_candles, entry, direction, min_target_distance)
+    levels = _liquidity_levels(m15_candles, entry, direction, min_target_distance, symbol)
 
     tp1_kind = tp2_kind = None
     tp1 = tp2 = None
     for kind, level in levels:
-        if direction == "BUY":
-            rr = (level - entry) / risk
-        else:
-            rr = (entry - level) / risk
+        rr = abs(level - entry) / risk
         if tp1 is None and rr >= MIN_TP1_RR:
             tp1, tp1_kind = level, kind
             continue
@@ -179,11 +185,29 @@ def analyze_pair_diagnostic(h4_candles, h1_candles, m15_candles, symbol=None):
     if tp2 is None:
         return None, "NO EXTERNAL LIQUIDITY FOR TP2"
 
-    score = 2
-    if h4["event"] in ("BOS", "CHoCH") or h1["event"] in ("BOS", "CHoCH"):
-        score += 1
-    score += 1  # aligned FVG is a hard gate above
-    score += 1  # aligned liquidity sweep is a hard gate above
+    wanted = "BULLISH" if direction == "BUY" else "BEARISH"
+    htf_aligned = h4["bias"] == h1["bias"] == wanted
+    h1_aligned = h1["bias"] == wanted
+    h4_aligned = h4["bias"] == wanted
+    opposite_h1 = h1["bias"] in ("BULLISH", "BEARISH") and h1["bias"] != wanted
+    opposite_h4 = h4["bias"] in ("BULLISH", "BEARISH") and h4["bias"] != wanted
+
+    # Liquidity-first classification. HTF alignment is a quality enhancer,
+    # not an absolute gate. A reversal can qualify before HTF bias flips.
+    if htf_aligned:
+        setup_type = "CONTINUATION"
+        grade = "S5"
+        score = 5
+    elif h1_aligned and (h4_aligned or h4["bias"] == "NEUTRAL"):
+        setup_type = "CONTINUATION"
+        grade = "S4"
+        score = 4
+    elif (opposite_h1 or opposite_h4 or h4["bias"] == "NEUTRAL") and ob["signal_index"] > ob["sweep"]["index"]:
+        setup_type = "REVERSAL"
+        grade = "S4"
+        score = 4
+    else:
+        return None, "HTF CONTEXT TOO WEAK"
 
     if score < MIN_SCORE:
         return None, f"SCORE TOO LOW ({score}/5)"
@@ -191,7 +215,9 @@ def analyze_pair_diagnostic(h4_candles, h1_candles, m15_candles, symbol=None):
     tp1_rr = abs(tp1 - entry) / risk
     tp2_rr = abs(tp2 - entry) / risk
     setup = {
-        "bias": bias, "direction": direction,
+        "bias": wanted,
+        "direction": direction,
+        "setup_type": setup_type,
         "entry": entry,
         "entry_low": round(zone_low, 5),
         "entry_high": round(zone_high, 5),
@@ -200,7 +226,8 @@ def analyze_pair_diagnostic(h4_candles, h1_candles, m15_candles, symbol=None):
         "tp2": round(tp2, 5),
         "rr": round(tp1_rr, 2),
         "tp2_rr": round(tp2_rr, 2),
-        "score": score, "grade": f"S{score}",
+        "score": score,
+        "grade": grade,
         "event": h1["event"] if h1["event"] != "NONE" else h4["event"],
         "fvg": fvg["type"],
         "sweep": sweep["type"],
@@ -216,6 +243,36 @@ def analyze_pair_diagnostic(h4_candles, h1_candles, m15_candles, symbol=None):
         "tp2_type": tp2_kind,
     }
     return setup, "QUALIFIED"
+
+
+def analyze_pair_diagnostic(h4_candles, h1_candles, m15_candles, symbol=None):
+    h4 = analyze_structure(h4_candles)
+    h1 = analyze_structure(h1_candles)
+
+    candidates = []
+    diagnostics = []
+    for direction in _direction_candidates(h4["bias"], h1["bias"]):
+        setup, reason = _build_candidate(
+            h4, h1, h4_candles, h1_candles, m15_candles, direction, symbol
+        )
+        diagnostics.append(f"{direction}: {reason}")
+        if setup:
+            candidates.append(setup)
+
+    if not candidates:
+        return None, "; ".join(diagnostics)
+
+    # Prefer stronger HTF alignment, then reversal/continuation quality,
+    # then the setup with more room to the next external liquidity.
+    candidates.sort(
+        key=lambda s: (
+            s["score"],
+            s["tp2_rr"],
+            -s["risk_pips"],
+        ),
+        reverse=True,
+    )
+    return candidates[0], "QUALIFIED"
 
 
 def analyze_pair(h4_candles, h1_candles, m15_candles, symbol=None):
