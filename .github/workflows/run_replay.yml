@@ -1,0 +1,28 @@
+name: Run GBPUSD SMC Replay
+
+on:
+  push:
+    paths:
+      - "replay_gbpusd.py"
+      - "replay_data/*.csv"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run replay
+        run: python replay_gbpusd.py
+      - name: Save results
+        run: |
+          git config user.name "msemwafx-replay"
+          git config user.email "msemwafx-replay@users.noreply.github.com"
+          git add replay_results.csv
+          git diff --cached --quiet && exit 0
+          git commit -m "Add GBPUSD replay results"
+          git push
