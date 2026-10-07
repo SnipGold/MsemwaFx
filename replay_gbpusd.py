@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from statistics import median
 from pathlib import Path
 
-ROOT = Path("replay_data")
+ROOT = Path("replay_data")  # historical GBPUSD replay
 OUT = Path("replay_results.csv")
 
 def load(path):
