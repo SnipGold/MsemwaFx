@@ -28,7 +28,6 @@ jobs:
             "AUD/USD|AUDUSD"
             "USD/CHF|USDCHF"
             "USD/CAD|USDCAD"
-            "XAU/USD|XAUUSD"
             "NZD/USD|NZDUSD"
           )
           n=0
