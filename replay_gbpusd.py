@@ -52,8 +52,18 @@ def bias_at(rows, t, lookback=12):
     pos = (c - lo) / rng
     up = sum(recent[i]["close"] > recent[i-1]["close"] for i in range(1,len(recent)))
     dn = sum(recent[i]["close"] < recent[i-1]["close"] for i in range(1,len(recent)))
-    # HTF campaign bias: recent displacement/close location, not just a
-    # mechanical HH/LL count. This allows a pullback inside an intact trend.
+    # HTF campaign bias: recent displacement/close location, plus a
+    # liquidity-sweep transition candle. This keeps a reversal valid before
+    # the higher timeframe has printed several new HH/HLs.
+    last = recent[-1]
+    prev = x[-5:-1]
+    if prev:
+        prev_low = min(r["low"] for r in prev)
+        prev_high = max(r["high"] for r in prev)
+        if last["low"] < prev_low and last["close"] > last["open"] and pos >= 0.55:
+            return "BULLISH"
+        if last["high"] > prev_high and last["close"] < last["open"] and pos <= 0.45:
+            return "BEARISH"
     if pos >= 0.55 and up >= 2:
         return "BULLISH"
     if pos <= 0.45 and dn >= 2:
