@@ -19,7 +19,7 @@ jobs:
       - name: Reconstruct pre-noise-reduction replay
         run: |
           set -euo pipefail
-          git show 288ba0d0f0e53bc976ebf010e0da463ea9a13515:replay_all_pairs.py > /tmp/replay_old.py
+          git show 4e6f63071698c53c5525f88021131696887a582a:replay_all_pairs.py > /tmp/replay_old.py
           sed -i 's#OUT=Path("replay_all_results.csv")#OUT=Path("replay_old_results.csv")#' /tmp/replay_old.py
           sed -i 's#SUMMARY=Path("replay_all_summary.csv")#SUMMARY=Path("replay_old_summary.csv")#' /tmp/replay_old.py
           python /tmp/replay_old.py
