@@ -1,0 +1,58 @@
+name: Eight Pair Historical Replay Data
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/replay_all.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download 8-pair M15 H1 H4 data from Twelve Data
+        env:
+          TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p replay_data
+          specs=(
+            "EUR/USD|EURUSD"
+            "EUR/JPY|EURJPY"
+            "GBP/USD|GBPUSD"
+            "AUD/USD|AUDUSD"
+            "USD/CHF|USDCHF"
+            "USD/CAD|USDCAD"
+            "XAU/USD|XAUUSD"
+            "NZD/USD|NZDUSD"
+          )
+          n=0
+          for spec in "${specs[@]}"; do
+            symbol="${spec%%|*}"
+            code="${spec##*|}"
+            for interval in 15min 1h 4h; do
+              file="replay_data/${code}_${interval}.csv"
+              echo "Downloading ${symbol} ${interval}"
+              encoded=$(printf '%s' "$symbol" | sed 's#/#%2F#g')
+              curl --fail --silent --show-error --location \
+                "https://api.twelvedata.com/time_series?symbol=${encoded}&interval=${interval}&start_date=2026-09-23T00:00:00&end_date=2026-10-07T23:59:59&timezone=UTC&order=asc&format=CSV&apikey=${TWELVEDATA_API_KEY}" \
+                -o "${file}"
+              test "$(wc -l < "${file}")" -gt 2
+              echo "${file}: $(wc -l < "${file}") rows"
+              n=$((n+1))
+              if [ "$n" -lt 24 ]; then sleep 9; fi
+            done
+          done
+      - name: Save replay data
+        run: |
+          git config user.name "msemwafx-replay"
+          git config user.email "msemwafx-replay@users.noreply.github.com"
+          git add replay_data/*.csv
+          git diff --cached --quiet && exit 0
+          git commit -m "Add eight-pair historical replay data"
+          git push
