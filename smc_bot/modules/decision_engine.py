@@ -193,20 +193,38 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
     opposite_h4 = h4["bias"] in ("BULLISH", "BEARISH") and h4["bias"] != wanted
     has_htf_context = h1["bias"] in ("BULLISH", "BEARISH") or h4["bias"] in ("BULLISH", "BEARISH")
 
-    # Liquidity-first, but with a moderate reversal gate. We still allow
-    # early reversals before H4 flips; we just require a genuine structure
-    # confirmation instead of treating every sweep reaction as a reversal.
+    # Balanced liquidity-first reversal gate.
+    #
+    # A/B replay showed that the previous gate was too restrictive: it
+    # rejected genuine counter-HTF reversals such as EUR/JPY BUY 2026-10-02
+    # where H4/H1 were bearish but H1 had a real BOS.
+    #
+    # We therefore allow an institutional reversal when the M15 engine has
+    # already produced the hard liquidity requirements above AND there is
+    # structural confirmation on H1 or H4. A counter-HTF setup without that
+    # confirmation remains out of the institutional stream.
     reversal_confirmed = (
+        # H1 has flipped/shifted toward the trade direction.
         (h1_aligned and h1["event"] in ("BOS", "CHoCH"))
+        # H1 is still neutral, but H4 has produced a structural shift.
+        or (
+            h1["bias"] == "NEUTRAL"
+            and opposite_h4
+            and h4["event"] in ("BOS", "CHoCH")
+        )
+        # H4 is neutral and H1 has produced a CHoCH toward the reversal.
         or (
             h4["bias"] == "NEUTRAL"
             and opposite_h1
             and h1["event"] == "CHoCH"
         )
+        # Strong counter-HTF reversal: H1 is opposite, but H1 itself has
+        # produced BOS/CHoCH. This is deliberately limited to a structural
+        # event; opposite bias with no event is NOT an institutional trade.
         or (
             opposite_h4
-            and h1["bias"] == "NEUTRAL"
-            and h4["event"] in ("BOS", "CHoCH")
+            and opposite_h1
+            and h1["event"] in ("BOS", "CHoCH")
         )
     )
 
@@ -223,7 +241,7 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
         grade = "S4"
         score = 4
     else:
-        return None, "HTF CONTEXT TOO WEAK"
+        return None, "REVERSAL NEEDS STRUCTURAL CONFIRMATION"
 
     if score < MIN_SCORE:
         return None, f"SCORE TOO LOW ({score}/5)"
