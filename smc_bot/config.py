@@ -5,7 +5,6 @@ SYMBOLS = [
     "AUD/USD",
     "USD/CHF",
     "USD/CAD",
-    "XAU/USD",
     "NZD/USD",
 ]
 
