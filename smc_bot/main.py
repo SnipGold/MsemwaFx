@@ -28,7 +28,7 @@ def cached_m15(symbol):
     try:
         with open(path, encoding="utf-8") as f:
             saved = json.load(f)
-        if saved.get("data") and now - float(saved.get("time", 0)) < 900:
+        if saved.get("data") and len(saved["data"]) >= M15_OUTPUTSIZE and now - float(saved.get("time", 0)) < 900:
             return saved["data"]
     except (FileNotFoundError, ValueError, TypeError, OSError):
         pass
