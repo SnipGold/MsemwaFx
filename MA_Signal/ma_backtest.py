@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 from collections import defaultdict
 import requests
 API=os.getenv("TWELVEDATA_API_KEY","").strip(); BOT=os.getenv("TELEGRAM_BOT_TOKEN","").strip(); CHAT=os.getenv("TELEGRAM_CHAT_ID","").strip()
-PAIRS=["EUR/USD","EUR/JPY","GBP/USD","AUD/USD","USD/CHF","USD/CAD","NZD/USD","USD/JPY"]; N=5000; START=1000.; RISK=1.; DAILY=3.; RR=2.
+PAIRS=["EUR/USD","EUR/JPY","GBP/USD","AUD/USD","USD/CHF","USD/CAD","NZD/USD","USD/JPY"]; N=5000; START=1000.; RISK=1.; DAILY=5.; RR=2.
 ATR_N=14; ADX_MIN=20.; LEFT=3; RIGHT=3; LOOKBACK=50; BUFFER=.10
 OUT=Path("MA_Signal/results"); UTC=timezone.utc; LON=ZoneInfo("Europe/London"); NY=ZoneInfo("America/New_York")
 def dt(s):
