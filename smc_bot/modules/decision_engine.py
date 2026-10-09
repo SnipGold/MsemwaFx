@@ -184,6 +184,12 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
     if tp2 is None:
         return None, "NO EXTERNAL LIQUIDITY FOR TP2"
 
+    # Hard direction/price validation: never publish a BUY with sell-side SL/TP geometry.
+    if direction == "BUY" and not (sl < entry < tp1 < tp2):
+        return None, "DIRECTION/LEVEL MISMATCH — BUY requires SL < entry < TP1 < TP2"
+    if direction == "SELL" and not (tp2 < tp1 < entry < sl):
+        return None, "DIRECTION/LEVEL MISMATCH — SELL requires TP2 < TP1 < entry < SL"
+
     wanted = "BULLISH" if direction == "BUY" else "BEARISH"
     htf_aligned = h4["bias"] == h1["bias"] == wanted
     h1_aligned = h1["bias"] == wanted
@@ -233,6 +239,8 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
     tp2_rr = abs(tp2 - entry) / risk
     setup = {
         "bias": wanted,
+        "h4_bias": h4["bias"],
+        "h1_bias": h1["bias"],
         "direction": direction,
         "setup_type": setup_type,
         "entry": entry,
