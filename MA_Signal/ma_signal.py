@@ -42,9 +42,16 @@ def get_closed_candles(symbol):
     try:
         saved = json.loads(path.read_text(encoding="utf-8"))
         rows = saved.get("data", [])
+        cache_time = float(saved.get("time", 0))
     except (OSError, ValueError, TypeError) as exc:
         raise RuntimeError(f"Shared SMC candle cache unavailable for {symbol}: {exc}") from exc
 
+    cache_age = time.time() - cache_time
+    if cache_age < 0 or cache_age > 1800:
+        raise RuntimeError(
+            f"Shared SMC candle cache for {symbol} is stale "
+            f"({cache_age / 60:.1f} minutes); refusing to send a signal."
+        )
     if not rows:
         raise RuntimeError(f"Shared SMC candle cache is empty for {symbol}")
 
