@@ -9,7 +9,7 @@ Rules:
 - Entry at next H1 candle open.
 - Session filter: entry candle must be in the overlap when London and New York are both between 08:00 and 17:00 local time. Uses Europe/London and America/New_York zones, handling their daylight-saving changes separately.
 - Take profit: 2R from entry to the actual swing-based stop.
-- Capital USD 1,000; planned risk 1% equity per trade; block new entries after 3% realized UTC-day loss.
+- Capital USD 1,000; planned risk 1% equity per trade; block new entries after 5% realized UTC-day loss (current test setting).
 - If SL and TP are both touched within one H1 candle, count SL first.
 
 Outputs: Actions summary and artifacts summary.json, trades.csv, telegram_status.txt. Telegram report is attempted if bot token and chat ID secrets exist.
