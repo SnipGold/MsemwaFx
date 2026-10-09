@@ -1,0 +1,41 @@
+name: Independent MA Signals
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "13 * * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: independent-ma-signals
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependency
+        run: python -m pip install requests
+      - name: Scan closed H1 candles and send MA signals
+        env:
+          TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python MA_Signal/ma_signal.py
+      - name: Save signal de-duplication state
+        run: |
+          git config user.name "msemwafx-ma-signals"
+          git config user.email "msemwafx-ma-signals@users.noreply.github.com"
+          git add MA_Signal/sent_signals.json
+          git diff --cached --quiet && exit 0
+          git commit -m "Update MA signal deduplication state"
+          git push
