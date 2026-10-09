@@ -1,9 +1,17 @@
-# MA Strategy Backtest
+# MA Strategy Backtest — Version 2
 
-Independent H1 historical test. No trade execution and no changes to the SMC/ICT bot.
+Independent H1 historical test. This is separate from the SMC/ICT bot and never places trades.
 
-Rules: closed H1 candles; entry at next bar open; BUY when EMA9 crosses above EMA20, EMA50>EMA200 and close>EMA50; SELL inverse; SL=1.5x ATR(14); TP=2R; reference capital USD 1,000; 1% equity risk per entry; block new entries after realized UTC-day loss reaches 3%; count SL first if SL and TP are touched in one candle.
+Rules:
+- Entry: closed H1 EMA 9/20 crossover, EMA 50/200 trend filter, and close on the EMA 50 trend side.
+- Sideways filter: ADX(14) >= 20. This is an initial test threshold, not a proven optimum.
+- Stop: latest confirmed swing high/low, using 3 candles on each side and a 50-bar search; swing must already be confirmed at signal time. Add/subtract a 0.10 x ATR(14) buffer.
+- Entry at next H1 candle open.
+- Session filter: entry candle must be in the overlap when London and New York are both between 08:00 and 17:00 local time. Uses Europe/London and America/New_York zones, handling their daylight-saving changes separately.
+- Take profit: 2R from entry to the actual swing-based stop.
+- Capital USD 1,000; planned risk 1% equity per trade; block new entries after 3% realized UTC-day loss.
+- If SL and TP are both touched within one H1 candle, count SL first.
 
-Outputs: Actions summary, results artifact (summary.json, trades.csv), Telegram report if bot token and chat ID secrets are configured.
+Outputs: Actions summary and artifacts summary.json, trades.csv, telegram_status.txt. Telegram report is attempted if bot token and chat ID secrets exist.
 
-Limitations: requests up to 5,000 H1 candles per pair and refuses fewer than 1,000 closed bars; gross results exclude spread, commission, swaps and slippage. The 1/1.5/2-pip cost scenarios are assumptions, not actual HFM Cent spreads. Daily loss lockout blocks new entries only; it does not force-close open positions. OHLC simulation is not tick-level. Historical results do not promise future performance.
+Limitations: requests up to 5,000 H1 candles per pair and refuses fewer than 1,000 closed candles. Gross results exclude actual spread, commission, swaps and slippage. Cost scenarios are assumptions, not measured HFM Cent costs. Daily lockout blocks new entries but does not force-close open positions. OHLC is not tick-level. Historical results do not promise future performance.
