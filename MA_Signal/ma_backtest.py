@@ -44,7 +44,9 @@ def get(pair):
  r=requests.get("https://api.twelvedata.com/time_series",params={"symbol":pair,"interval":"1h","outputsize":N,"timezone":"UTC","apikey":API},timeout=45); r.raise_for_status(); j=r.json()
  if "values" not in j: raise RuntimeError(j.get("message","No candle data"))
  c=[{"t":dt(x["datetime"]),"o":float(x["open"]),"h":float(x["high"]),"l":float(x["low"]),"c":float(x["close"])} for x in reversed(j["values"])][:-1]
- if len(c)<1000: raise RuntimeError(f"{pair}: only {len(c)} closed bars")
+ # Exclude Saturday/Sunday UTC candles before indicators, signals, and simulation.
+ c=[x for x in c if x["t"].weekday()<5]
+ if len(c)<1000: raise RuntimeError(f"{pair}: only {len(c)} closed weekday bars after weekend filtering")
  return c
 def overlap(t):
  l=t.astimezone(LON).time(); n=t.astimezone(NY).time()
