@@ -33,17 +33,60 @@ def atr(candles, period=14):
     return value
 
 def get_closed_candles(symbol):
-    r = requests.get(URL, params={"symbol":symbol,"interval":"1h","outputsize":OUTPUTSIZE,
-                                  "timezone":"UTC","apikey":API_KEY}, timeout=30)
-    r.raise_for_status()
-    payload = r.json()
-    if "values" not in payload: raise RuntimeError(payload.get("message","No candle values"))
-    rows = list(reversed(payload["values"]))
-    candles = [{"time":x["datetime"],"open":float(x["open"]),"high":float(x["high"]),
-                "low":float(x["low"]),"close":float(x["close"])} for x in rows]
-    # Exclude newest candle because it may still be forming.
-    candles = candles[:-1]
-    if len(candles) < MAJOR+3: raise RuntimeError(f"Only {len(candles)} closed candles")
+    """Build H1 candles from the SMC scanner's shared, cached M15 candles.
+
+    This function deliberately makes no Twelve Data request. The SMC workflow
+    refreshes the source cache; MA only consumes completed four-candle H1 bars.
+    """
+    path = Path("smc_bot/data_cache") / f"{symbol.replace('/', '_')}_15min.json"
+    try:
+        saved = json.loads(path.read_text(encoding="utf-8"))
+        rows = saved.get("data", [])
+    except (OSError, ValueError, TypeError) as exc:
+        raise RuntimeError(f"Shared SMC candle cache unavailable for {symbol}: {exc}") from exc
+
+    if not rows:
+        raise RuntimeError(f"Shared SMC candle cache is empty for {symbol}")
+
+    now = datetime.now(timezone.utc)
+    buckets = {}
+    for row in rows:
+        try:
+            stamp = datetime.fromisoformat(str(row["time"]).replace("Z", "+00:00"))
+            if stamp.tzinfo is None:
+                stamp = stamp.replace(tzinfo=timezone.utc)
+            stamp = stamp.astimezone(timezone.utc)
+            if (stamp.timestamp() + 15 * 60) > now.timestamp():
+                continue
+            key = stamp.replace(minute=0, second=0, microsecond=0)
+            buckets.setdefault(key, []).append((stamp, row))
+        except (KeyError, TypeError, ValueError):
+            continue
+
+    candles = []
+    for hour, group in sorted(buckets.items()):
+        group.sort(key=lambda item: item[0])
+        # Accept only full H1 candles made from four distinct 15-minute bars.
+        expected = [hour.replace(minute=m) for m in (0, 15, 30, 45)]
+        if len(group) != 4 or [item[0] for item in group] != expected:
+            continue
+        bars = [item[1] for item in group]
+        candles.append({
+            "time": hour.strftime("%Y-%m-%d %H:%M:%S"),
+            "open": float(bars[0]["open"]),
+            "high": max(float(bar["high"]) for bar in bars),
+            "low": min(float(bar["low"]) for bar in bars),
+            "close": float(bars[-1]["close"]),
+        })
+
+    # EMA200 needs warm-up history; fail closed instead of generating weak signals.
+    if len(candles) < MAJOR + 20:
+        raise RuntimeError(
+            f"Insufficient shared M15 history for {symbol}: "
+            f"{len(candles)} complete H1 bars; need at least {MAJOR + 20}. "
+            "No separate API request was made."
+        )
+    print(f"  SHARED CACHE: {len(rows)} M15 candles -> {len(candles)} complete H1 candles")
     return candles
 
 def make_signal(symbol, candles):
