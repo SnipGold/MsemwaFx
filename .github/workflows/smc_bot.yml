@@ -48,11 +48,17 @@ jobs:
           WA_PHONE: ${{ secrets.WA_PHONE }}
           WA_APIKEY: ${{ secrets.WA_APIKEY }}
         run: python main.py
+      - name: Run MA signal scan from shared candles
+        working-directory: .
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python MA_Signal/ma_signal.py
       - name: Persist alert state
         run: |
           if git diff --quiet -- smc_bot/sent.json; then exit 0; fi
           git config user.name "msemwafx-bot"
           git config user.email "msemwafx-bot@users.noreply.github.com"
-          git add smc_bot/sent.json
+          git add smc_bot/sent.json MA_Signal/sent_signals.json
           git commit -m "Update bot alert state"
           git push
