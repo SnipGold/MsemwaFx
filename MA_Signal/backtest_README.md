@@ -7,6 +7,7 @@ Rules:
 - Sideways filter: ADX(14) >= 20. This is an initial test threshold, not a proven optimum.
 - Stop: latest confirmed swing high/low, using 3 candles on each side and a 50-bar search; swing must already be confirmed at signal time. Add/subtract a 0.10 x ATR(14) buffer.
 - Entry at next H1 candle open.
+- Saturday and Sunday UTC candles are excluded before indicator calculation, signal generation, and simulation.
 - Session filter: entry candle must be in the overlap when London and New York are both between 08:00 and 17:00 local time. Uses Europe/London and America/New_York zones, handling their daylight-saving changes separately.
 - Take profit: 2R from entry to the actual swing-based stop.
 - Capital USD 1,000; planned risk 1% equity per trade; block new entries after 5% realized UTC-day loss (current test setting).
