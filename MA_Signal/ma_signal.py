@@ -5,15 +5,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 import requests
 
-API_KEY = os.getenv("TWELVEDATA_API_KEY", "").strip()
 BOT = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 CHAT = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 SYMBOLS = ["EUR/USD","EUR/JPY","GBP/USD","AUD/USD","USD/CHF","USD/CAD","NZD/USD","USD/JPY"]
-OUTPUTSIZE, FAST, SIGNAL, TREND, MAJOR, ATR_PERIOD = 250, 9, 20, 50, 200, 14
+FAST, SIGNAL, TREND, MAJOR, ATR_PERIOD = 9, 20, 50, 200, 14
 ATR_MULTIPLIER, RR = 1.5, 2.0
 CAPITAL, RISK_PCT, DAILY_LOSS_PCT = 1000.0, 1.0, 3.0
 STATE_PATH = Path("MA_Signal/sent_signals.json")
-URL = "https://api.twelvedata.com/time_series"
 
 def ema(values, period):
     if len(values) < period: return []
@@ -140,7 +138,6 @@ def format_msg(x):
       "Signal only; no order was placed. Check live price, spread, news and position size before trading.")
 
 def main():
-    if not API_KEY: raise SystemExit("Missing TWELVEDATA_API_KEY GitHub Actions secret.")
     state, alerts = load_state(), 0
     for i, symbol in enumerate(SYMBOLS):
         print(f"[{i+1}/{len(SYMBOLS)}] {symbol}")
