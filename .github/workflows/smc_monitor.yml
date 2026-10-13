@@ -94,7 +94,7 @@ jobs:
                   latest = runs[0]
                   created = datetime.fromisoformat(latest["created_at"].replace("Z", "+00:00"))
                   age_minutes = (now - created).total_seconds() / 60
-                  if age_minutes > 40:
+                  if age_minutes > 20:
                       alert_key = f"stale:{latest['id']}"
                       message = (
                           "⚠️ MsemwaFx scheduled SMC scanner appears overdue.\n"
