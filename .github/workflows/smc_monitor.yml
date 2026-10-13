@@ -1,0 +1,130 @@
+name: MsemwaFx Workflow Monitor
+
+on:
+  schedule:
+    - cron: "4,19,34,49 * * * *"
+  workflow_run:
+    workflows: ["MsemwaFx SMC ICT Bot"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: msemwafx-monitor
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore monitor state
+        uses: actions/cache@v4
+        with:
+          path: monitor_state.json
+          key: msemwafx-monitor-state-${{ github.run_id }}
+          restore-keys: |
+            msemwafx-monitor-state-
+      - name: Check scanner and alert through Telegram
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          EVENT_NAME: ${{ github.event_name }}
+          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          RUN_EVENT: ${{ github.event.workflow_run.event }}
+        run: |
+          python - <<'PY'
+          import json, os, urllib.request, urllib.parse
+          from datetime import datetime, timezone
+
+          owner, repo = "SnipGold", "MsemwaFx"
+          state_path = "monitor_state.json"
+          try:
+              with open(state_path, "r", encoding="utf-8") as f:
+                  state = json.load(f)
+          except (OSError, ValueError):
+              state = {"last_alert": ""}
+
+          event_name = os.getenv("EVENT_NAME", "")
+          alert_key = ""
+          message = ""
+
+          def api_get(url):
+              req = urllib.request.Request(
+                  url,
+                  headers={
+                      "Accept": "application/vnd.github+json",
+                      "Authorization": "Bearer " + os.environ["GH_TOKEN"],
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  },
+              )
+              with urllib.request.urlopen(req, timeout=20) as response:
+                  return json.loads(response.read().decode("utf-8"))
+
+          if event_name == "workflow_run":
+              conclusion = os.getenv("RUN_CONCLUSION", "")
+              run_event = os.getenv("RUN_EVENT", "")
+              if run_event == "schedule" and conclusion != "success":
+                  run_id = os.getenv("RUN_ID", "")
+                  alert_key = f"failed:{run_id}:{conclusion}"
+                  message = (
+                      "🚨 MsemwaFx SMC/ICT scheduled scan did not succeed.\n"
+                      f"Status: {conclusion}\nRun: {os.getenv('RUN_URL', '')}"
+                  )
+          else:
+              data = api_get(
+                  f"https://api.github.com/repos/{owner}/{repo}/actions/workflows/smc_bot.yml/runs"
+                  "?branch=main&event=schedule&per_page=1"
+              )
+              runs = data.get("workflow_runs", [])
+              now = datetime.now(timezone.utc)
+              if not runs:
+                  alert_key = "missing:no-scheduled-runs"
+                  message = "⚠️ MsemwaFx monitor cannot find any scheduled SMC scanner runs on main."
+              else:
+                  latest = runs[0]
+                  created = datetime.fromisoformat(latest["created_at"].replace("Z", "+00:00"))
+                  age_minutes = (now - created).total_seconds() / 60
+                  if age_minutes > 40:
+                      alert_key = f"stale:{latest['id']}"
+                      message = (
+                          "⚠️ MsemwaFx scheduled SMC scanner appears overdue.\n"
+                          f"Latest scheduled run: {latest['created_at']} UTC "
+                          f"({int(age_minutes)} minutes ago).\n"
+                          f"Status: {latest.get('status')} / {latest.get('conclusion')}\n"
+                          f"Run: {latest.get('html_url', '')}"
+                      )
+
+          if message and alert_key != state.get("last_alert", ""):
+              token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+              chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
+              if not token or not chat_id:
+                  raise SystemExit("Telegram secrets TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID are missing.")
+              payload = urllib.parse.urlencode({"chat_id": chat_id, "text": message}).encode()
+              req = urllib.request.Request(
+                  f"https://api.telegram.org/bot{token}/sendMessage",
+                  data=payload,
+                  method="POST",
+              )
+              with urllib.request.urlopen(req, timeout=20) as response:
+                  result = json.loads(response.read().decode("utf-8"))
+              if not result.get("ok"):
+                  raise SystemExit("Telegram API did not accept the monitor alert.")
+              state["last_alert"] = alert_key
+              print("Telegram monitor alert sent.")
+          elif message:
+              print("Same alert already sent; suppressing duplicate.")
+          else:
+              if state.get("last_alert"):
+                  state["last_alert"] = ""
+              print("Monitor check passed; no new alert needed.")
+
+          with open(state_path, "w", encoding="utf-8") as f:
+              json.dump(state, f, indent=2)
+          PY
