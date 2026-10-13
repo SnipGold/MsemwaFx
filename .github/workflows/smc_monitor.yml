@@ -1,6 +1,9 @@
 name: MsemwaFx Workflow Monitor
 
 on:
+  push:
+    paths:
+      - ".github/workflows/smc_monitor.yml"
   schedule:
     - cron: "4,19,34,49 * * * *"
   workflow_run:
