@@ -1,6 +1,9 @@
 name: MsemwaFx SMC ICT Bot
 
 on:
+  push:
+    paths:
+      - ".github/workflows/smc_bot.yml"
   schedule:
     - cron: "11,26,41,56 * * * *"
   workflow_dispatch:
