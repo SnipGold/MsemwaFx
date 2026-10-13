@@ -13,7 +13,7 @@ on:
 
 permissions:
   actions: read
-  contents: read
+  contents: write
 
 concurrency:
   group: msemwafx-monitor
@@ -24,13 +24,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Restore monitor state
-        uses: actions/cache@v4
-        with:
-          path: monitor_state.json
-          key: msemwafx-monitor-state-${{ github.run_id }}
-          restore-keys: |
-            msemwafx-monitor-state-
       - name: Check scanner and alert through Telegram
         env:
           GH_TOKEN: ${{ github.token }}
@@ -131,3 +124,11 @@ jobs:
           with open(state_path, "w", encoding="utf-8") as f:
               json.dump(state, f, indent=2)
           PY
+      - name: Persist monitor alert state
+        run: |
+          if git diff --quiet -- monitor_state.json; then exit 0; fi
+          git config user.name "msemwafx-monitor"
+          git config user.email "msemwafx-monitor@users.noreply.github.com"
+          git add monitor_state.json
+          git commit -m "Persist SMC monitor alert state"
+          git push
