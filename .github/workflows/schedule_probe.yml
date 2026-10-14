@@ -1,8 +1,11 @@
 name: MsemwaFx Schedule Probe
 
 on:
+  push:
+    paths:
+      - ".github/workflows/schedule_probe.yml"
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "2-57/5 * * * *"
   workflow_dispatch:
 
 permissions:
