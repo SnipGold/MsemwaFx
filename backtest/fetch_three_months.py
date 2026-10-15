@@ -38,7 +38,6 @@ def fetch_chunk(symbol, start, end):
         "start_date": start.isoformat(),
         "end_date": end.isoformat(),
         "timezone": "UTC",
-        "format": "CSV",
         "apikey": API_KEY,
     }
     last_error = "unknown error"
