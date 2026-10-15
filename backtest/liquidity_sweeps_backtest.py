@@ -16,7 +16,7 @@ OUT_DIR = Path("liquidity_sweeps_results")
 LEFT = 5
 RIGHT = 2
 MAX_HOLD_BARS = 96  # 24 hours on M15
-TARGETS_R = (1.0, 2.0)
+TARGETS_R = (1.0, 2.0, 3.0)
 
 
 def parse_time(value):
