@@ -1,0 +1,47 @@
+name: Liquidity Swings & Sweeps Backtest
+
+on:
+  push:
+    paths:
+      - "backtest/liquidity_sweeps_backtest.py"
+      - ".github/workflows/liquidity_sweeps_backtest.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: liquidity-sweeps-backtest
+  cancel-in-progress: false
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run historical backtest
+        run: python backtest/liquidity_sweeps_backtest.py
+      - name: Upload backtest results
+        uses: actions/upload-artifact@v4
+        with:
+          name: liquidity-swings-sweeps-results
+          path: liquidity_sweeps_results/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Commit results for review
+        run: |
+          if [ -z "$(git status --porcelain -- liquidity_sweeps_results/)" ]; then
+            echo "No result changes to commit."
+            exit 0
+          fi
+          git config user.name "msemwafx-backtest"
+          git config user.email "msemwafx-backtest@users.noreply.github.com"
+          git add liquidity_sweeps_results/
+          git commit -m "Publish liquidity sweeps backtest results"
+          git push
