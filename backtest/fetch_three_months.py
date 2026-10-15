@@ -49,16 +49,41 @@ def fetch_chunk(symbol, start, end):
                 time.sleep(65)
                 continue
             response.raise_for_status()
-            payload = response.json()
-            if "values" not in payload:
-                last_error = str(payload.get("message", payload.get("code", "no values")))
-                if "credits" in last_error.lower() or "limit" in last_error.lower():
-                    time.sleep(65)
-                    continue
-                break
+            body = response.text.strip()
             rows = []
-            for candle in payload["values"]:
-                stamp = datetime.fromisoformat(candle["datetime"])
+            if body.startswith("{") or body.startswith("["):
+                payload = response.json()
+                if "values" not in payload:
+                    last_error = str(payload.get("message", payload.get("code", "no values")))
+                    if "credits" in last_error.lower() or "limit" in last_error.lower():
+                        time.sleep(65)
+                        continue
+                    break
+                candles = payload["values"]
+            else:
+                # Twelve Data may return CSV text; parse it without logging the response/key.
+                reader = csv.DictReader(body.splitlines())
+                candles = []
+                for item in reader:
+                    normalized = {str(k).strip().lower(): str(v).strip() for k, v in item.items() if k}
+                    stamp_key = next((k for k in normalized if k in ("datetime", "date", "time")), None)
+                    if not stamp_key:
+                        continue
+                    candles.append({
+                        "datetime": normalized[stamp_key],
+                        "open": normalized.get("open"),
+                        "high": normalized.get("high"),
+                        "low": normalized.get("low"),
+                        "close": normalized.get("close"),
+                    })
+                if not candles:
+                    last_error = f"unexpected response (HTTP {response.status_code}, content-type {response.headers.get('content-type', 'unknown')})"
+                    if attempt < 2:
+                        time.sleep(5 * (attempt + 1))
+                        continue
+                    break
+            for candle in candles:
+                stamp = datetime.fromisoformat(str(candle["datetime"]).replace("Z", "+00:00")).replace(tzinfo=None)
                 rows.append({
                     "datetime": stamp.strftime("%Y-%m-%d %H:%M:%S"),
                     "open": float(candle["open"]),
