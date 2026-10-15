@@ -16,7 +16,7 @@ OUT_DIR = Path("liquidity_sweeps_results")
 LEFT = 5
 RIGHT = 2
 MAX_HOLD_BARS = 96  # 24 hours on M15
-TARGETS_R = (1.0, 2.0, 3.0)
+TARGETS_R = (1.0, 2.0, 3.0, 4.0, 5.0)
 
 
 def parse_time(value):
@@ -254,7 +254,7 @@ def main():
 
     print("LIQUIDITY SWINGS & SWEEPS — M15 BACKTEST")
     print(f"Swing sensitivity: left={LEFT}, right={RIGHT}; max holding={MAX_HOLD_BARS} bars")
-    print("Entry: sweep and reclaim candle close; SL: sweep candle extreme; targets: 1R and 2R")
+    print("Entry: sweep and reclaim candle close; SL: sweep candle extreme; targets: 1R, 2R, 3R, 4R and 5R")
     print("No look-ahead; one open trade per instrument per target; SL wins same-bar TP/SL ties.")
     print("Gross results: spread, commissions and slippage excluded.")
     for row in summary_rows:
