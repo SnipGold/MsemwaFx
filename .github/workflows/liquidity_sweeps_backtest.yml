@@ -5,6 +5,8 @@ on:
     paths:
       - "backtest/liquidity_sweeps_backtest.py"
       - "backtest/fetch_three_months.py"
+      - "backtest/fetch_h1_h4.py"
+      - "backtest/compare_sweep_timeframes.py"
       - ".github/workflows/liquidity_sweeps_backtest.yml"
   workflow_dispatch:
 
@@ -18,7 +20,7 @@ concurrency:
 jobs:
   backtest:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 40
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -32,15 +34,23 @@ jobs:
         env:
           TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
         run: python backtest/fetch_three_months.py
-      - name: Run historical backtest
+      - name: Download rolling 90-day H1 and H4 candles
+        env:
+          TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
+        run: python backtest/fetch_h1_h4.py
+      - name: Run M15 baseline backtest
         run: python backtest/liquidity_sweeps_backtest.py
-      - name: Upload dataset and backtest results
+      - name: Compare standalone M15, H1 and H4 sweeps
+        run: python backtest/compare_sweep_timeframes.py
+      - name: Upload datasets and backtest results
         uses: actions/upload-artifact@v4
         with:
-          name: liquidity-swings-sweeps-90-day-results
+          name: liquidity-sweeps-m15-h1-h4-90-day-results
           path: |
             liquidity_sweeps_results/
             replay_data/*_15min.csv
+            replay_data/*_1h.csv
+            replay_data/*_4h.csv
           if-no-files-found: error
           retention-days: 30
       - name: Commit results for review
@@ -52,5 +62,5 @@ jobs:
           git config user.name "msemwafx-backtest"
           git config user.email "msemwafx-backtest@users.noreply.github.com"
           git add liquidity_sweeps_results/
-          git commit -m "Publish 90-day liquidity sweeps backtest results"
+          git commit -m "Publish 90-day M15 H1 H4 sweep comparison"
           git push
