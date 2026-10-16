@@ -51,7 +51,7 @@ def candles(symbol):
     return [x for x in rows if parse_time(x["time"]).timestamp() + 900 <= now.timestamp()]
 
 
-def outcome(setup, future, rr):
+def outcome(setup, future, rr, rr_label):
     entry, sl = float(setup["entry"]), float(setup["sl"])
     buy = setup["direction"] == "BUY"
     risk = abs(entry - sl)
@@ -138,7 +138,7 @@ def main():
                     continue
 
                 data = candle_data[symbol]
-                result, status, offset = outcome(setup, data[item["signal_index"]:], rr)
+                result, status, offset = outcome(setup, data[item["signal_index"]:], rr, rr_label)
                 if offset is None:
                     continue
                 resolution_index = min(item["signal_index"] + offset, len(data) - 1)
@@ -175,7 +175,7 @@ def main():
     print("Daily loss accounting: realized on resolution timestamp; checked before each later signal.")
     print("SUMMARY BY RISK:REWARD (risk fixed at 2 units)")
     for model in ("ORIGINAL", "SWEEP"):
-        for rr in RATIOS:
+        for rr_label, rr in RATIOS:
             rs = [x for x in records if x["model"] == model and x["rr_target"] == rr_label]
             wins = sum(x["outcome"] == f"TP{rr}" for x in rs)
             losses = sum(x["outcome"] == "SL" for x in rs)
@@ -188,7 +188,7 @@ def main():
                       f"resolved_win_rate={wins/resolved:.1%}, expectancy_per_resolved_R={expectancy:.3f}, "
                       f"unresolved={unresolved}")
             else:
-                print(f"{model} 1:{rr}: trades={len(rs)}, no resolved outcomes, unresolved={unresolved}")
+                print(f"{model} {rr_label} (reward={rr:g}R): no resolved outcomes, unresolved={unresolved}")
     print("REJECTION COUNTS")
     for (model, symbol, reason), count in sorted(rejects.items()):
         print(f"{model},{symbol},{reason},{count}")
