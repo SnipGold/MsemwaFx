@@ -1,9 +1,10 @@
-"""Compare ORIGINAL and SWEEP entries at fixed 1:2, 1:3, 1:4, 1:5 targets.
+"""Compare ORIGINAL and SWEEP at 1:2, 1:3, 1:4, 1:5 with a 3R daily stop.
 
-Historical signals are generated using only closed M15 candles. For each
-signal, all four target ratios use the same entry and structural stop. If
-entry and SL/target are both touched in one OHLC candle, SL is counted first.
-This is a research backtest, not a live-trading instruction.
+This is a simplified portfolio simulation: signals are deduplicated by model,
+symbol, direction and signal candle; one open trade per symbol/model/ratio is
+allowed until its outcome resolves. Daily loss is accumulated on the outcome
+date, and new trades are blocked for that model/ratio once realized losses
+reach 3R for the day. OHLC ambiguity is handled conservatively (SL first).
 """
 import csv
 import os
@@ -12,9 +13,7 @@ import time
 from collections import defaultdict
 from datetime import datetime, timezone
 
-# Make smc_bot imports work when executed from the workflow's working directory.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import requests
 from config import SYMBOLS, M15_OUTPUTSIZE
 from modules.timeframes import build_htf
@@ -31,22 +30,25 @@ RISK_FRACTION = float(os.getenv("BACKTEST_RISK_FRACTION", "0.005"))
 MAX_DAILY_LOSS_R = float(os.getenv("BACKTEST_MAX_DAILY_LOSS_R", "3.0"))
 
 
+def parse_time(value):
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
 def candles(symbol):
     if not API_KEY:
-        raise RuntimeError("Missing TWELVEDATA_API_KEY secret")
+        raise RuntimeError("Missing TWELVEDATA_API_KEY")
     response = requests.get(URL, params={"symbol": symbol, "interval": "15min",
         "outputsize": M15_OUTPUTSIZE, "timezone": "UTC", "apikey": API_KEY}, timeout=30)
     response.raise_for_status()
     payload = response.json()
     if "values" not in payload:
         raise RuntimeError(f"{symbol}: TwelveData returned {payload.get('message', payload)}")
-    rows = []
-    for x in reversed(payload["values"]):
-        rows.append({"time": x["datetime"], "open": float(x["open"]),
-            "high": float(x["high"]), "low": float(x["low"]), "close": float(x["close"])})
+    rows = [{"time": x["datetime"], "open": float(x["open"]), "high": float(x["high"]),
+             "low": float(x["low"]), "close": float(x["close"])}
+            for x in reversed(payload["values"])]
     now = datetime.now(timezone.utc)
-    return [x for x in rows if datetime.fromisoformat(x["time"]).replace(
-        tzinfo=timezone.utc).timestamp() + 900 <= now.timestamp()]
+    return [x for x in rows if parse_time(x["time"]).replace(tzinfo=timezone.utc).timestamp()
+            + 900 <= now.timestamp()]
 
 
 def outcome(setup, future, rr):
@@ -54,10 +56,10 @@ def outcome(setup, future, rr):
     buy = setup["direction"] == "BUY"
     risk = abs(entry - sl)
     if risk <= 0:
-        return None, "INVALID_SL"
+        return None, "INVALID_SL", None
     target = entry + rr * risk if buy else entry - rr * risk
     entered = False
-    for c in future[:MAX_FORWARD]:
+    for offset, c in enumerate(future[:MAX_FORWARD]):
         if not entered:
             if c["low"] <= entry <= c["high"]:
                 entered = True
@@ -65,17 +67,17 @@ def outcome(setup, future, rr):
                 continue
         hit_sl = c["low"] <= sl if buy else c["high"] >= sl
         hit_target = c["high"] >= target if buy else c["low"] <= target
-        if hit_sl:  # Conservative ordering when both boundaries fall in one candle.
-            return -1.0, "SL"
+        if hit_sl:
+            return -1.0, "SL", offset
         if hit_target:
-            return float(rr), f"TP{rr}"
-    return 0.0, "NO_RESOLUTION"
+            return float(rr), f"TP{rr}", offset
+    return 0.0, "NO_RESOLUTION", min(len(future), MAX_FORWARD) - 1 if future else None
 
 
 def main():
     if not API_KEY:
         raise RuntimeError("TWELVEDATA_API_KEY not configured in GitHub Actions secrets")
-    records, rejects = [], defaultdict(int)
+    candidates, rejects = [], defaultdict(int)
     for symbol in SYMBOLS:
         data = candles(symbol)
         print(f"{symbol}: {len(data)} closed M15 candles")
@@ -98,32 +100,66 @@ def main():
                 if not setup:
                     rejects[(model, symbol, "NO_SETUP")] += 1
                     continue
-                for rr in RATIOS:
-                    result, status = outcome(setup, data[end:], rr)
-                    if result is None:
-                        rejects[(model, symbol, status)] += 1
-                        continue
-                    records.append({
-                        "symbol": symbol, "model": model, "rr_target": f"1:{rr}",
-                        "signal_time": m15[-1]["time"], "direction": setup["direction"],
-                        "entry": setup["entry"], "sl": setup["sl"],
-                        "target": round(float(setup["entry"]) + (rr * abs(float(setup["entry"]) - float(setup["sl"])) if setup["direction"] == "BUY" else -rr * abs(float(setup["entry"]) - float(setup["sl"]))), 8),
-                        "risk_fraction": RISK_FRACTION, "max_daily_loss_R_limit": MAX_DAILY_LOSS_R,
-                        "result_R": result, "outcome": status,
-                        "signal_fvg": setup.get("fvg", "NONE"),
-                        "signal_sweep": setup.get("sweep", "NONE")})
-        time.sleep(8)  # Stay within TwelveData Basic rate limits.
+                candidates.append({"symbol": symbol, "model": model, "setup": setup,
+                    "signal_time": m15[-1]["time"], "signal_index": end, "data": data})
+        time.sleep(8)
+
+    # Simulate each model/target separately. Deduplicate repeated rolling-window
+    # detections and block overlapping positions on the same symbol.
+    records = []
+    for model in ("ORIGINAL", "SWEEP"):
+        for rr in RATIOS:
+            selected = sorted((x for x in candidates if x["model"] == model),
+                              key=lambda x: (x["signal_index"], x["symbol"]))
+            daily_realized = defaultdict(float)
+            busy_until = {}
+            seen = set()
+            for item in selected:
+                setup, symbol = item["setup"], item["symbol"]
+                key = (symbol, setup["direction"], item["signal_time"])
+                if key in seen:
+                    continue
+                seen.add(key)
+                signal_day = parse_time(item["signal_time"]).date().isoformat()
+                if daily_realized[(model, rr, signal_day)] <= -MAX_DAILY_LOSS_R:
+                    rejects[(model, symbol, f"DAILY_STOP_1:{rr}")] += 1
+                    continue
+                if busy_until.get(symbol, -1) > item["signal_index"]:
+                    rejects[(model, symbol, f"POSITION_OPEN_1:{rr}")] += 1
+                    continue
+                data = item["data"]
+                result, status, offset = outcome(setup, data[item["signal_index"]:], rr)
+                if offset is None:
+                    continue
+                resolution_index = item["signal_index"] + offset
+                if resolution_index >= len(data):
+                    resolution_index = len(data) - 1
+                resolution_day = parse_time(data[resolution_index]["time"]).date().isoformat()
+                if status != "NO_RESOLUTION":
+                    daily_realized[(model, rr, resolution_day)] += result
+                busy_until[symbol] = resolution_index
+                risk = abs(float(setup["entry"]) - float(setup["sl"]))
+                target = float(setup["entry"]) + (rr * risk if setup["direction"] == "BUY" else -rr * risk)
+                records.append({"symbol": symbol, "model": model, "rr_target": f"1:{rr}",
+                    "signal_time": item["signal_time"], "resolution_day": resolution_day,
+                    "direction": setup["direction"], "entry": setup["entry"], "sl": setup["sl"],
+                    "target": round(target, 8), "risk_fraction": RISK_FRACTION,
+                    "max_daily_loss_R_limit": MAX_DAILY_LOSS_R, "result_R": result,
+                    "outcome": status, "signal_fvg": setup.get("fvg", "NONE"),
+                    "signal_sweep": setup.get("sweep", "NONE")})
 
     os.makedirs(os.path.dirname(OUT) or ".", exist_ok=True)
-    fields = ["symbol", "model", "rr_target", "signal_time", "direction", "entry", "sl",
-        "target", "risk_fraction", "max_daily_loss_R_limit", "result_R", "outcome",
-        "signal_fvg", "signal_sweep"]
+    fields = ["symbol", "model", "rr_target", "signal_time", "resolution_day", "direction",
+        "entry", "sl", "target", "risk_fraction", "max_daily_loss_R_limit", "result_R",
+        "outcome", "signal_fvg", "signal_sweep"]
     with open(OUT, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fields)
         writer.writeheader()
         writer.writerows(records)
 
-    print("\nSUMMARY BY MODEL AND R:R")
+    print(f"DAILY STOP: blocks new entries at realized daily P/L <= -{MAX_DAILY_LOSS_R:.1f}R; "
+          "separate limit per model and target ratio.")
+    print("SUMMARY BY MODEL AND R:R")
     for model in ("ORIGINAL", "SWEEP"):
         for rr in RATIOS:
             rs = [x for x in records if x["model"] == model and x["rr_target"] == f"1:{rr}"]
@@ -131,13 +167,13 @@ def main():
             losses = sum(x["outcome"] == "SL" for x in rs)
             unresolved = sum(x["outcome"] == "NO_RESOLUTION" for x in rs)
             resolved = wins + losses
-            avg_all = sum(x["result_R"] for x in rs) / len(rs) if rs else 0.0
-            expectancy = sum(x["result_R"] for x in rs) / resolved if resolved else 0.0
-            win_rate = wins / resolved if resolved else 0.0
+            total_r = sum(x["result_R"] for x in rs if x["outcome"] != "NO_RESOLUTION")
+            expectancy = total_r / resolved if resolved else 0.0
             print(f"{model} 1:{rr}: trades={len(rs)}, wins={wins}, losses={losses}, "
-                  f"resolved_win_rate={win_rate:.1%}, expectancy_per_resolved_R={expectancy:.3f}, "
-                  f"avg_R_including_unresolved={avg_all:.3f}, unresolved={unresolved}")
-    print("\nREJECTION COUNTS")
+                  f"resolved_win_rate={wins/resolved:.1%}" if resolved else
+                  f"{model} 1:{rr}: trades={len(rs)}, no resolved outcomes")
+            print(f"  expectancy_per_resolved_R={expectancy:.3f}; unresolved={unresolved}")
+    print("REJECTION COUNTS")
     for (model, symbol, reason), count in sorted(rejects.items()):
         print(f"{model},{symbol},{reason},{count}")
     print(f"CSV: {OUT}")
