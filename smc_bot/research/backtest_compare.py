@@ -1,9 +1,9 @@
 """Compare ORIGINAL and SWEEP at 1:2, 1:3, 1:4, 1:5 with a 5% daily loss cap.
 
-At the configured 0.5% nominal risk per trade, 5% equals 10R. This is a
-simplified portfolio simulation: signals are deduplicated by model, symbol,
-direction and signal candle; one open trade per symbol/model/ratio is allowed
-until its outcome resolves. OHLC ambiguity is handled conservatively (SL first).
+Daily realized P/L is applied only when a simulated trade resolves. Before each
+new signal, the simulator settles all prior trades whose resolution timestamp
+has passed, then checks the loss limit for the signal's date. One open position
+per symbol/model/target is allowed. Ambiguous OHLC bars count as stop-loss first.
 """
 import csv
 import os
@@ -31,7 +31,8 @@ MAX_DAILY_LOSS_R = DAILY_LOSS_LIMIT_PCT / (RISK_FRACTION * 100.0)
 
 
 def parse_time(value):
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
 
 
 def candles(symbol):
@@ -47,8 +48,7 @@ def candles(symbol):
              "low": float(x["low"]), "close": float(x["close"])}
             for x in reversed(payload["values"])]
     now = datetime.now(timezone.utc)
-    return [x for x in rows if parse_time(x["time"]).replace(tzinfo=timezone.utc).timestamp()
-            + 900 <= now.timestamp()]
+    return [x for x in rows if parse_time(x["time"]).timestamp() + 900 <= now.timestamp()]
 
 
 def outcome(setup, future, rr):
@@ -77,9 +77,10 @@ def outcome(setup, future, rr):
 def main():
     if not API_KEY:
         raise RuntimeError("TWELVEDATA_API_KEY not configured in GitHub Actions secrets")
-    candidates, rejects = [], defaultdict(int)
+    candidates, rejects, candle_data = [], defaultdict(int), {}
     for symbol in SYMBOLS:
         data = candles(symbol)
+        candle_data[symbol] = data
         print(f"{symbol}: {len(data)} closed M15 candles")
         for end in range(160, len(data) - MAX_FORWARD, STEP):
             history = data[:end]
@@ -99,7 +100,7 @@ def main():
             for model, setup in (("ORIGINAL", original), ("SWEEP", sweep)):
                 if setup:
                     candidates.append({"symbol": symbol, "model": model, "setup": setup,
-                        "signal_time": m15[-1]["time"], "signal_index": end, "data": data})
+                        "signal_time": m15[-1]["time"], "signal_index": end})
                 else:
                     rejects[(model, symbol, "NO_SETUP")] += 1
         time.sleep(8)
@@ -112,42 +113,57 @@ def main():
             daily_realized = defaultdict(float)
             busy_until = {}
             seen = set()
+            pending = []
             for item in selected:
+                signal_dt = parse_time(item["signal_time"])
+                # Realize outcomes only once their actual simulated resolution time
+                # has occurred. This prevents future losses affecting earlier signals.
+                due, pending = ([p for p in pending if p["resolution_dt"] <= signal_dt],
+                                [p for p in pending if p["resolution_dt"] > signal_dt])
+                for p in due:
+                    if p["outcome"] != "NO_RESOLUTION":
+                        daily_realized[p["resolution_dt"].date().isoformat()] += p["result_R"]
+
                 setup, symbol = item["setup"], item["symbol"]
                 key = (symbol, setup["direction"], item["signal_time"])
                 if key in seen:
                     continue
                 seen.add(key)
-                signal_day = parse_time(item["signal_time"]).date().isoformat()
-                if daily_realized[(model, rr, signal_day)] <= -MAX_DAILY_LOSS_R:
+                signal_day = signal_dt.date().isoformat()
+                if daily_realized[signal_day] <= -MAX_DAILY_LOSS_R:
                     rejects[(model, symbol, f"DAILY_STOP_1:{rr}")] += 1
                     continue
-                if busy_until.get(symbol, -1) > item["signal_index"]:
+                if busy_until.get(symbol) and busy_until[symbol] > signal_dt:
                     rejects[(model, symbol, f"POSITION_OPEN_1:{rr}")] += 1
                     continue
-                data = item["data"]
+
+                data = candle_data[symbol]
                 result, status, offset = outcome(setup, data[item["signal_index"]:], rr)
                 if offset is None:
                     continue
                 resolution_index = min(item["signal_index"] + offset, len(data) - 1)
-                resolution_day = parse_time(data[resolution_index]["time"]).date().isoformat()
-                if status != "NO_RESOLUTION":
-                    daily_realized[(model, rr, resolution_day)] += result
-                busy_until[symbol] = resolution_index
+                resolution_dt = parse_time(data[resolution_index]["time"])
+                busy_until[symbol] = resolution_dt
                 risk = abs(float(setup["entry"]) - float(setup["sl"]))
                 target = float(setup["entry"]) + (rr * risk if setup["direction"] == "BUY" else -rr * risk)
-                records.append({"symbol": symbol, "model": model, "rr_target": f"1:{rr}",
-                    "signal_time": item["signal_time"], "resolution_day": resolution_day,
-                    "direction": setup["direction"], "entry": setup["entry"], "sl": setup["sl"],
-                    "target": round(target, 8), "risk_fraction": RISK_FRACTION,
-                    "daily_loss_limit_pct": DAILY_LOSS_LIMIT_PCT,
-                    "daily_loss_limit_R": MAX_DAILY_LOSS_R, "result_R": result,
-                    "outcome": status, "signal_fvg": setup.get("fvg", "NONE"),
-                    "signal_sweep": setup.get("sweep", "NONE")})
+                row = {"symbol": symbol, "model": model, "rr_target": f"1:{rr}",
+                    "signal_time": item["signal_time"], "resolution_time": resolution_dt.isoformat(),
+                    "resolution_day": resolution_dt.date().isoformat(), "direction": setup["direction"],
+                    "entry": setup["entry"], "sl": setup["sl"], "target": round(target, 8),
+                    "risk_fraction": RISK_FRACTION, "daily_loss_limit_pct": DAILY_LOSS_LIMIT_PCT,
+                    "daily_loss_limit_R": MAX_DAILY_LOSS_R, "result_R": result, "outcome": status,
+                    "signal_fvg": setup.get("fvg", "NONE"), "signal_sweep": setup.get("sweep", "NONE")}
+                records.append(row)
+                pending.append({"resolution_dt": resolution_dt, "result_R": result, "outcome": status})
+
+            # Flush pending outcomes to keep the event accounting complete.
+            for p in sorted(pending, key=lambda x: x["resolution_dt"]):
+                if p["outcome"] != "NO_RESOLUTION":
+                    daily_realized[p["resolution_dt"].date().isoformat()] += p["result_R"]
 
     os.makedirs(os.path.dirname(OUT) or ".", exist_ok=True)
-    fields = ["symbol", "model", "rr_target", "signal_time", "resolution_day", "direction",
-        "entry", "sl", "target", "risk_fraction", "daily_loss_limit_pct",
+    fields = ["symbol", "model", "rr_target", "signal_time", "resolution_time", "resolution_day",
+        "direction", "entry", "sl", "target", "risk_fraction", "daily_loss_limit_pct",
         "daily_loss_limit_R", "result_R", "outcome", "signal_fvg", "signal_sweep"]
     with open(OUT, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fields)
@@ -156,6 +172,7 @@ def main():
 
     print(f"DAILY LOSS CAP: {DAILY_LOSS_LIMIT_PCT:.1f}% = {MAX_DAILY_LOSS_R:.1f}R at "
           f"{RISK_FRACTION*100:.2f}% nominal risk per trade.")
+    print("Daily loss accounting: realized on resolution timestamp; checked before each later signal.")
     print("SUMMARY BY MODEL AND R:R")
     for model in ("ORIGINAL", "SWEEP"):
         for rr in RATIOS:
