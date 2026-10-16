@@ -1,10 +1,9 @@
-"""Compare ORIGINAL and SWEEP at 1:2, 1:3, 1:4, 1:5 with a 3R daily stop.
+"""Compare ORIGINAL and SWEEP at 1:2, 1:3, 1:4, 1:5 with a 5% daily loss cap.
 
-This is a simplified portfolio simulation: signals are deduplicated by model,
-symbol, direction and signal candle; one open trade per symbol/model/ratio is
-allowed until its outcome resolves. Daily loss is accumulated on the outcome
-date, and new trades are blocked for that model/ratio once realized losses
-reach 3R for the day. OHLC ambiguity is handled conservatively (SL first).
+At the configured 0.5% nominal risk per trade, 5% equals 10R. This is a
+simplified portfolio simulation: signals are deduplicated by model, symbol,
+direction and signal candle; one open trade per symbol/model/ratio is allowed
+until its outcome resolves. OHLC ambiguity is handled conservatively (SL first).
 """
 import csv
 import os
@@ -27,7 +26,8 @@ STEP = int(os.getenv("BACKTEST_STEP_CANDLES", "4"))
 MAX_FORWARD = int(os.getenv("BACKTEST_FORWARD_CANDLES", "96"))
 RATIOS = (2, 3, 4, 5)
 RISK_FRACTION = float(os.getenv("BACKTEST_RISK_FRACTION", "0.005"))
-MAX_DAILY_LOSS_R = float(os.getenv("BACKTEST_MAX_DAILY_LOSS_R", "3.0"))
+DAILY_LOSS_LIMIT_PCT = float(os.getenv("BACKTEST_DAILY_LOSS_LIMIT_PCT", "5.0"))
+MAX_DAILY_LOSS_R = DAILY_LOSS_LIMIT_PCT / (RISK_FRACTION * 100.0)
 
 
 def parse_time(value):
@@ -97,20 +97,18 @@ def main():
                 rejects[("ORIGINAL", symbol, "ERROR:" + type(exc).__name__)] += 1
                 original = None
             for model, setup in (("ORIGINAL", original), ("SWEEP", sweep)):
-                if not setup:
+                if setup:
+                    candidates.append({"symbol": symbol, "model": model, "setup": setup,
+                        "signal_time": m15[-1]["time"], "signal_index": end, "data": data})
+                else:
                     rejects[(model, symbol, "NO_SETUP")] += 1
-                    continue
-                candidates.append({"symbol": symbol, "model": model, "setup": setup,
-                    "signal_time": m15[-1]["time"], "signal_index": end, "data": data})
         time.sleep(8)
 
-    # Simulate each model/target separately. Deduplicate repeated rolling-window
-    # detections and block overlapping positions on the same symbol.
     records = []
     for model in ("ORIGINAL", "SWEEP"):
         for rr in RATIOS:
             selected = sorted((x for x in candidates if x["model"] == model),
-                              key=lambda x: (x["signal_index"], x["symbol"]))
+                              key=lambda x: (parse_time(x["signal_time"]), x["symbol"]))
             daily_realized = defaultdict(float)
             busy_until = {}
             seen = set()
@@ -131,9 +129,7 @@ def main():
                 result, status, offset = outcome(setup, data[item["signal_index"]:], rr)
                 if offset is None:
                     continue
-                resolution_index = item["signal_index"] + offset
-                if resolution_index >= len(data):
-                    resolution_index = len(data) - 1
+                resolution_index = min(item["signal_index"] + offset, len(data) - 1)
                 resolution_day = parse_time(data[resolution_index]["time"]).date().isoformat()
                 if status != "NO_RESOLUTION":
                     daily_realized[(model, rr, resolution_day)] += result
@@ -144,21 +140,22 @@ def main():
                     "signal_time": item["signal_time"], "resolution_day": resolution_day,
                     "direction": setup["direction"], "entry": setup["entry"], "sl": setup["sl"],
                     "target": round(target, 8), "risk_fraction": RISK_FRACTION,
-                    "max_daily_loss_R_limit": MAX_DAILY_LOSS_R, "result_R": result,
+                    "daily_loss_limit_pct": DAILY_LOSS_LIMIT_PCT,
+                    "daily_loss_limit_R": MAX_DAILY_LOSS_R, "result_R": result,
                     "outcome": status, "signal_fvg": setup.get("fvg", "NONE"),
                     "signal_sweep": setup.get("sweep", "NONE")})
 
     os.makedirs(os.path.dirname(OUT) or ".", exist_ok=True)
     fields = ["symbol", "model", "rr_target", "signal_time", "resolution_day", "direction",
-        "entry", "sl", "target", "risk_fraction", "max_daily_loss_R_limit", "result_R",
-        "outcome", "signal_fvg", "signal_sweep"]
+        "entry", "sl", "target", "risk_fraction", "daily_loss_limit_pct",
+        "daily_loss_limit_R", "result_R", "outcome", "signal_fvg", "signal_sweep"]
     with open(OUT, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fields)
         writer.writeheader()
         writer.writerows(records)
 
-    print(f"DAILY STOP: blocks new entries at realized daily P/L <= -{MAX_DAILY_LOSS_R:.1f}R; "
-          "separate limit per model and target ratio.")
+    print(f"DAILY LOSS CAP: {DAILY_LOSS_LIMIT_PCT:.1f}% = {MAX_DAILY_LOSS_R:.1f}R at "
+          f"{RISK_FRACTION*100:.2f}% nominal risk per trade.")
     print("SUMMARY BY MODEL AND R:R")
     for model in ("ORIGINAL", "SWEEP"):
         for rr in RATIOS:
@@ -169,10 +166,12 @@ def main():
             resolved = wins + losses
             total_r = sum(x["result_R"] for x in rs if x["outcome"] != "NO_RESOLUTION")
             expectancy = total_r / resolved if resolved else 0.0
-            print(f"{model} 1:{rr}: trades={len(rs)}, wins={wins}, losses={losses}, "
-                  f"resolved_win_rate={wins/resolved:.1%}" if resolved else
-                  f"{model} 1:{rr}: trades={len(rs)}, no resolved outcomes")
-            print(f"  expectancy_per_resolved_R={expectancy:.3f}; unresolved={unresolved}")
+            if resolved:
+                print(f"{model} 1:{rr}: trades={len(rs)}, wins={wins}, losses={losses}, "
+                      f"resolved_win_rate={wins/resolved:.1%}, expectancy_per_resolved_R={expectancy:.3f}, "
+                      f"unresolved={unresolved}")
+            else:
+                print(f"{model} 1:{rr}: trades={len(rs)}, no resolved outcomes, unresolved={unresolved}")
     print("REJECTION COUNTS")
     for (model, symbol, reason), count in sorted(rejects.items()):
         print(f"{model},{symbol},{reason},{count}")
