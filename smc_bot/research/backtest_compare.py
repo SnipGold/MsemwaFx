@@ -1,4 +1,4 @@
-"""Compare ORIGINAL and SWEEP at 1:2, 1:3, 1:4, 1:5 with a 5% daily loss cap.
+"""Compare ORIGINAL and SWEEP at risk:reward 2:3, 2:4, 2:5 with a 5% daily loss cap.
 
 Daily realized P/L is applied only when a simulated trade resolves. Before each
 new signal, the simulator settles all prior trades whose resolution timestamp
@@ -24,7 +24,7 @@ URL = "https://api.twelvedata.com/time_series"
 OUT = os.getenv("BACKTEST_OUTPUT", "../research/original_vs_sweep_results.csv")
 STEP = int(os.getenv("BACKTEST_STEP_CANDLES", "4"))
 MAX_FORWARD = int(os.getenv("BACKTEST_FORWARD_CANDLES", "96"))
-RATIOS = (2, 3, 4, 5)
+RATIOS = (("2:3", 1.5), ("2:4", 2.0), ("2:5", 2.5))
 RISK_FRACTION = float(os.getenv("BACKTEST_RISK_FRACTION", "0.005"))
 DAILY_LOSS_LIMIT_PCT = float(os.getenv("BACKTEST_DAILY_LOSS_LIMIT_PCT", "5.0"))
 MAX_DAILY_LOSS_R = DAILY_LOSS_LIMIT_PCT / (RISK_FRACTION * 100.0)
@@ -70,7 +70,7 @@ def outcome(setup, future, rr):
         if hit_sl:
             return -1.0, "SL", offset
         if hit_target:
-            return float(rr), f"TP{rr}", offset
+            return float(rr), f"TP{rr_label}", offset
     return 0.0, "NO_RESOLUTION", min(len(future), MAX_FORWARD) - 1 if future else None
 
 
@@ -107,7 +107,7 @@ def main():
 
     records = []
     for model in ("ORIGINAL", "SWEEP"):
-        for rr in RATIOS:
+        for rr_label, rr in RATIOS:
             selected = sorted((x for x in candidates if x["model"] == model),
                               key=lambda x: (parse_time(x["signal_time"]), x["symbol"]))
             daily_realized = defaultdict(float)
@@ -131,10 +131,10 @@ def main():
                 seen.add(key)
                 signal_day = signal_dt.date().isoformat()
                 if daily_realized[signal_day] <= -MAX_DAILY_LOSS_R:
-                    rejects[(model, symbol, f"DAILY_STOP_1:{rr}")] += 1
+                    rejects[(model, symbol, f"DAILY_STOP_{rr_label}")] += 1
                     continue
                 if busy_until.get(symbol) and busy_until[symbol] > signal_dt:
-                    rejects[(model, symbol, f"POSITION_OPEN_1:{rr}")] += 1
+                    rejects[(model, symbol, f"POSITION_OPEN_{rr_label}")] += 1
                     continue
 
                 data = candle_data[symbol]
@@ -146,7 +146,7 @@ def main():
                 busy_until[symbol] = resolution_dt
                 risk = abs(float(setup["entry"]) - float(setup["sl"]))
                 target = float(setup["entry"]) + (rr * risk if setup["direction"] == "BUY" else -rr * risk)
-                row = {"symbol": symbol, "model": model, "rr_target": f"1:{rr}",
+                row = {"symbol": symbol, "model": model, "rr_target": rr_label,
                     "signal_time": item["signal_time"], "resolution_time": resolution_dt.isoformat(),
                     "resolution_day": resolution_dt.date().isoformat(), "direction": setup["direction"],
                     "entry": setup["entry"], "sl": setup["sl"], "target": round(target, 8),
@@ -173,10 +173,10 @@ def main():
     print(f"DAILY LOSS CAP: {DAILY_LOSS_LIMIT_PCT:.1f}% = {MAX_DAILY_LOSS_R:.1f}R at "
           f"{RISK_FRACTION*100:.2f}% nominal risk per trade.")
     print("Daily loss accounting: realized on resolution timestamp; checked before each later signal.")
-    print("SUMMARY BY MODEL AND R:R")
+    print("SUMMARY BY RISK:REWARD (risk fixed at 2 units)")
     for model in ("ORIGINAL", "SWEEP"):
         for rr in RATIOS:
-            rs = [x for x in records if x["model"] == model and x["rr_target"] == f"1:{rr}"]
+            rs = [x for x in records if x["model"] == model and x["rr_target"] == rr_label]
             wins = sum(x["outcome"] == f"TP{rr}" for x in rs)
             losses = sum(x["outcome"] == "SL" for x in rs)
             unresolved = sum(x["outcome"] == "NO_RESOLUTION" for x in rs)
@@ -184,7 +184,7 @@ def main():
             total_r = sum(x["result_R"] for x in rs if x["outcome"] != "NO_RESOLUTION")
             expectancy = total_r / resolved if resolved else 0.0
             if resolved:
-                print(f"{model} 1:{rr}: trades={len(rs)}, wins={wins}, losses={losses}, "
+                print(f"{model} {rr_label} (reward={rr:g}R): trades={len(rs)}, wins={wins}, losses={losses}, "
                       f"resolved_win_rate={wins/resolved:.1%}, expectancy_per_resolved_R={expectancy:.3f}, "
                       f"unresolved={unresolved}")
             else:
