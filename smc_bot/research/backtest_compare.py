@@ -177,7 +177,7 @@ def main():
     for model in ("ORIGINAL", "SWEEP"):
         for rr_label, rr in RATIOS:
             rs = [x for x in records if x["model"] == model and x["rr_target"] == rr_label]
-            wins = sum(x["outcome"] == f"TP{rr}" for x in rs)
+            wins = sum(x["outcome"] == f"TP{rr_label}" for x in rs)
             losses = sum(x["outcome"] == "SL" for x in rs)
             unresolved = sum(x["outcome"] == "NO_RESOLUTION" for x in rs)
             resolved = wins + losses
