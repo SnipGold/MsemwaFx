@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import requests
+from modules.structure import analyze_structure
 from config import SYMBOLS, M15_OUTPUTSIZE
 from modules.timeframes import build_htf
 from modules.decision_engine import analyze_pair_diagnostic
@@ -110,8 +111,14 @@ def main():
                 original = None
             for model, setup in (("ORIGINAL", original), ("SWEEP", sweep)):
                 if setup:
+                    h4_bias = analyze_structure(h4)["bias"]
+                    h1_bias = analyze_structure(h1)["bias"]
+                    alignment = ("ALIGNED" if h4_bias == h1_bias and
+                                 h4_bias in ("BULLISH", "BEARISH") else "NOT_ALIGNED")
                     candidates.append({"symbol": symbol, "model": model, "setup": setup,
-                        "signal_time": m15[-1]["time"], "signal_index": end})
+                        "signal_time": m15[-1]["time"], "signal_index": end,
+                        "session": session_bucket(m15[-1]["time"]),
+                        "htf_alignment": alignment})
                 else:
                     rejects[(model, symbol, "NO_SETUP")] += 1
         time.sleep(8)
