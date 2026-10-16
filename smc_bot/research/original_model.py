@@ -1,67 +1,47 @@
-"""Legacy/original entry model preserved for offline comparison only.
-
-This intentionally reproduces the pre-sweep-gated decision logic. Do not import
-this module into the live scanner. Risk controls should be applied by the
-backtest/execution harness before any simulated order is accepted.
-"""
+"""Legacy pre-sweep-gated model, for offline comparison only."""
 from modules.structure import analyze_structure
-from modules.orderblock import detect_order_block
 from modules.fvg import detect_fvg
 from modules.liquidity import liquidity_sweep
 
 
-def analyze_original(h4_candles, h1_candles, m15_candles):
-    """Return a legacy-style setup, or None.
+def _legacy_order_block(candles, bias):
+    # Historical detector: latest opposing candle, with no sweep requirement.
+    if len(candles) < 4:
+        return None
+    for i in range(len(candles) - 2, -1, -1):
+        c = candles[i]
+        if bias == "BULLISH" and c["close"] < c["open"]:
+            return {"type": "BULLISH_OB", "high": c["high"], "low": c["low"], "index": i}
+        if bias == "BEARISH" and c["close"] > c["open"]:
+            return {"type": "BEARISH_OB", "high": c["high"], "low": c["low"], "index": i}
+    return None
 
-    Original logic: H4/H1 bias must agree; an OB is required; FVG and sweep
-    are recorded as context, not mandatory entry gates. Targets are 2R/3R.
-    """
+
+def analyze_original(h4_candles, h1_candles, m15_candles):
     if not h4_candles or not h1_candles or not m15_candles:
         return None
-
-    h4 = analyze_structure(h4_candles)
-    h1 = analyze_structure(h1_candles)
-    if h4["bias"] != h1["bias"]:
+    h4, h1 = analyze_structure(h4_candles), analyze_structure(h1_candles)
+    if h4["bias"] != h1["bias"] or h4["bias"] not in ("BULLISH", "BEARISH"):
         return None
-
     bias = h4["bias"]
-    if bias not in ("BULLISH", "BEARISH"):
-        return None
-
-    ob = detect_order_block(m15_candles, bias)
+    ob = _legacy_order_block(m15_candles, bias)
     if not ob:
         return None
-
-    fvg = detect_fvg(m15_candles)
-    sweep = liquidity_sweep(m15_candles)
+    fvg, sweep = detect_fvg(m15_candles), liquidity_sweep(m15_candles)
     entry = (float(ob["high"]) + float(ob["low"])) / 2
-
     if bias == "BULLISH":
-        sl = float(ob["low"])
+        sl, direction = float(ob["low"]), "BUY"
         risk = entry - sl
-        direction = "BUY"
-        tp1, tp2 = entry + 2 * risk, entry + 3 * risk
+        tp1, tp2 = entry + 2*risk, entry + 3*risk
     else:
-        sl = float(ob["high"])
+        sl, direction = float(ob["high"]), "SELL"
         risk = sl - entry
-        direction = "SELL"
-        tp1, tp2 = entry - 2 * risk, entry - 3 * risk
-
+        tp1, tp2 = entry - 2*risk, entry - 3*risk
     if risk <= 0:
         return None
-
-    return {
-        "model": "ORIGINAL",
-        "bias": bias,
-        "direction": direction,
-        "entry": round(entry, 5),
-        "sl": round(sl, 5),
-        "tp1": round(tp1, 5),
-        "tp2": round(tp2, 5),
-        "rr": 2.0,
-        "tp2_rr": 3.0,
-        "event": h4.get("event", "NONE"),
-        "fvg": fvg["type"] if fvg else "NONE",
-        "sweep": sweep["type"] if sweep else "NONE",
-        "order_block": ob["type"],
-    }
+    return {"model":"ORIGINAL","bias":bias,"direction":direction,
+            "entry":round(entry,5),"sl":round(sl,5),"tp1":round(tp1,5),
+            "tp2":round(tp2,5),"rr":2.0,"tp2_rr":3.0,
+            "event":h4.get("event","NONE"),"fvg":fvg["type"] if fvg else "NONE",
+            "sweep":sweep["type"] if sweep else "NONE","order_block":ob["type"],
+            "signal_index":len(m15_candles)-1}
