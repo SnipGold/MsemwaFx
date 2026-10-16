@@ -51,6 +51,17 @@ def candles(symbol):
     return [x for x in rows if parse_time(x["time"]).timestamp() + 900 <= now.timestamp()]
 
 
+def session_bucket(value):
+    hour = parse_time(value).hour
+    if 0 <= hour < 7:
+        return "ASIA_00_07_UTC"
+    if 7 <= hour < 13:
+        return "LONDON_07_13_UTC"
+    if 13 <= hour < 21:
+        return "NEW_YORK_13_21_UTC"
+    return "ROLLOVER_21_24_UTC"
+
+
 def outcome(setup, future, rr, rr_label):
     entry, sl = float(setup["entry"]), float(setup["sl"])
     buy = setup["direction"] == "BUY"
@@ -152,7 +163,7 @@ def main():
                     "entry": setup["entry"], "sl": setup["sl"], "target": round(target, 8),
                     "risk_fraction": RISK_FRACTION, "daily_loss_limit_pct": DAILY_LOSS_LIMIT_PCT,
                     "daily_loss_limit_R": MAX_DAILY_LOSS_R, "result_R": result, "outcome": status,
-                    "signal_fvg": setup.get("fvg", "NONE"), "signal_sweep": setup.get("sweep", "NONE")}
+                    "signal_fvg": setup.get("fvg", "NONE"), "signal_sweep": setup.get("sweep", "NONE"),\n                    "session": item["session"], "htf_alignment": item["htf_alignment"]}
                 records.append(row)
                 pending.append({"resolution_dt": resolution_dt, "result_R": result, "outcome": status})
 
@@ -164,7 +175,7 @@ def main():
     os.makedirs(os.path.dirname(OUT) or ".", exist_ok=True)
     fields = ["symbol", "model", "rr_target", "signal_time", "resolution_time", "resolution_day",
         "direction", "entry", "sl", "target", "risk_fraction", "daily_loss_limit_pct",
-        "daily_loss_limit_R", "result_R", "outcome", "signal_fvg", "signal_sweep"]
+        "daily_loss_limit_R", "result_R", "outcome", "signal_fvg", "signal_sweep", "session", "htf_alignment"]
     with open(OUT, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fields)
         writer.writeheader()
@@ -189,6 +200,23 @@ def main():
                       f"unresolved={unresolved}")
             else:
                 print(f"{model} {rr_label} (reward={rr:g}R): no resolved outcomes, unresolved={unresolved}")
+    print("ORIGINAL MODEL BREAKDOWN (all target ratios pooled)")
+    original_rows = [x for x in records if x["model"] == "ORIGINAL"]
+    for dimension in ("symbol", "session", "htf_alignment"):
+        print(f"BY {dimension.upper()}")
+        keys = sorted({x[dimension] for x in original_rows})
+        for key in keys:
+            group = [x for x in original_rows if x[dimension] == key]
+            wins = sum(x["outcome"].startswith("TP") for x in group)
+            losses = sum(x["outcome"] == "SL" for x in group)
+            unresolved = sum(x["outcome"] == "NO_RESOLUTION" for x in group)
+            resolved = wins + losses
+            total_r = sum(x["result_R"] for x in group if x["outcome"] != "NO_RESOLUTION")
+            expectancy = total_r / resolved if resolved else 0.0
+            print(f"{key}: trades={len(group)}, wins={wins}, losses={losses}, "
+                  f"win_rate={wins/resolved:.1%}" if resolved else
+                  f"{key}: trades={len(group)}, no resolved outcomes")
+            print(f"  expectancy_per_resolved_R={expectancy:.3f}; unresolved={unresolved}")
     print("REJECTION COUNTS")
     for (model, symbol, reason), count in sorted(rejects.items()):
         print(f"{model},{symbol},{reason},{count}")
