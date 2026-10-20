@@ -115,11 +115,20 @@ def _direction_candidates(h4_bias, h1_bias):
     return [bullish, bearish]
 
 
+def _structure_confirmed(h4, h1):
+    valid_events = {"BOS", "CHoCH", "CHOCH"}
+    return h4.get("event") in valid_events or h1.get("event") in valid_events
+
+
 def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, symbol):
     """Build a continuation setup without mandatory sweep, displacement, or FVG filters."""
     wanted = "BULLISH" if direction == "BUY" else "BEARISH"
     if h4["bias"] != wanted or h1["bias"] != wanted:
         return None, f"HTF MISALIGNMENT (H4={h4['bias']}, H1={h1['bias']})"
+
+    # Accept BOS or CHoCH on either aligned HTF; reject setups with no structural event.
+    if not _structure_confirmed(h4, h1):
+        return None, "NO H4/H1 BOS OR CHoCH CONFIRMATION"
 
     ob = detect_order_block(m15_candles, wanted)
     if not ob:
