@@ -41,15 +41,7 @@ def signal(d,i,model,code):
     ph,pl=prior.high.max(),prior.low.min()
     direction=None
     fv=fvg(d,i)
-    if model=="SWEEP_RECLAIM":
-        if row.low<pl and row.close>pl: direction="BUY"
-        elif row.high>ph and row.close<ph: direction="SELL"
-    elif model=="DISPLACEMENT_FVG":
-        body=abs(row.close-row.open)
-        if body>=1.2*a and fv:
-            if row.close>row.open and fv[0]=="BUY": direction="BUY"
-            elif row.close<row.open and fv[0]=="SELL": direction="SELL"
-    elif model=="BOS_FVG":
+    if model=="BOS_FVG":
         if fv and row.close>ph and fv[0]=="BUY": direction="BUY"
         elif fv and row.close<pl and fv[0]=="SELL": direction="SELL"
     elif model=="OB_BREAK_RETEST":
@@ -91,7 +83,7 @@ def simulate(d,sig,target):
 def main():
     OUT.mkdir(exist_ok=True)
     trades=[]
-    models=("SWEEP_RECLAIM","DISPLACEMENT_FVG","BOS_FVG","OB_BREAK_RETEST","TREND_ZONE_REJECTION")
+    models=("BOS_FVG","OB_BREAK_RETEST","TREND_ZONE_REJECTION")
     for code in PAIRS:
         d=load(code)
         if d is None or len(d)<100: continue
