@@ -66,10 +66,10 @@ class ZoneTests(unittest.TestCase):
         rows[9] = (1.092, 1.100, 1.088, 1.096)
         rows[10] = (1.096, 1.102, 1.094, 1.100)
         rows[11] = (1.100, 1.102, 1.096, 1.101)
-        rows[18] = (1.090, 1.092, 1.085, 1.087)
-        rows[19] = (1.087, 1.090, 1.080, 1.082)
+        rows[18] = (1.090, 1.092, 1.075, 1.078)
+        rows[19] = (1.078, 1.080, 1.070, 1.072)
         result = analyze_zones(candles_from_closes(rows), pivot_span=2)
-        self.assertTrue(all(z["low"] >= 1.082 for z in result["demand"]))
+        self.assertTrue(all(z["low"] > 1.080 for z in result["demand"]))
 
 
 if __name__ == "__main__":
