@@ -120,14 +120,40 @@ def _direction_candidates(h4_bias, h1_bias):
     return ["BUY", "SELL"]
 
 
-def _dealing_range(candles, lookback=20):
-    """Return a recent closed-HTF dealing range and its 50% equilibrium."""
-    sample = candles[-lookback:]
-    if not sample:
+def _dealing_range(candles, lookback=80, pivot_span=2):
+    """Return a dealing range bounded by confirmed H4 swing points.
+
+    A pivot is eligible only after pivot_span candles have closed to its right.
+    Return None rather than silently substituting a raw rolling high/low.
+    """
+    if not isinstance(candles, (list, tuple)) or pivot_span < 1:
         return None
-    high = max(float(c["high"]) for c in sample)
-    low = min(float(c["low"]) for c in sample)
+    sample = candles[-lookback:]
+    if len(sample) < 2 * pivot_span + 3:
+        return None
+    highs, lows = [], []
+    for i in range(pivot_span, len(sample) - pivot_span):
+        hi = float(sample[i]["high"])
+        lo = float(sample[i]["low"])
+        if all(hi >= float(sample[j]["high"])
+               for j in range(i - pivot_span, i + pivot_span + 1) if j != i):
+            highs.append((i, hi))
+        if all(lo <= float(sample[j]["low"])
+               for j in range(i - pivot_span, i + pivot_span + 1) if j != i):
+            lows.append((i, lo))
+    if not highs or not lows:
+        return None
+    # Prefer the most recent confirmed swing pair that forms a valid range.
+    pairs = [(h, l, max(hi_i, lo_i)) for hi_i, h in highs for lo_i, l in lows if h > l]
+    if not pairs:
+        return None
+    high, low, _ = max(pairs, key=lambda pair: pair[2])
     return {"high": high, "low": low, "equilibrium": (high + low) / 2}
+
+
+def _price_digits(symbol):
+    """Use three decimals for JPY quotes and five for other FX pairs."""
+    return 3 if symbol and "JPY" in symbol else 5
 
 
 def _premium_discount(entry, direction, h4_candles):
@@ -165,7 +191,8 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
     fvg = _last_aligned_fvg(m15_candles, signal_index, direction)
     # FVG is contextual confluence only; its absence must not block an otherwise valid setup.
     zone_low, zone_high = float(ob["low"]), float(ob["high"])
-    entry = round((zone_low + zone_high) / 2, 5)
+    digits = _price_digits(symbol)
+    entry = round((zone_low + zone_high) / 2, digits)
     atr = _atr(m15_candles)
     if atr <= 0:
         return None, "NO M15 ATR"
@@ -174,10 +201,10 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
     lookback = m15_candles[max(0, signal_index - 5):signal_index + 1]
     if direction == "BUY":
         structural_low = min([zone_low] + [float(c["low"]) for c in lookback])
-        sl = round(structural_low - atr * MIN_ATR_SL_MULTIPLIER, 5)
+        sl = round(structural_low - atr * MIN_ATR_SL_MULTIPLIER, digits)
     else:
         structural_high = max([zone_high] + [float(c["high"]) for c in lookback])
-        sl = round(structural_high + atr * MIN_ATR_SL_MULTIPLIER, 5)
+        sl = round(structural_high + atr * MIN_ATR_SL_MULTIPLIER, digits)
 
     risk = abs(entry - sl)
     pip = _pip_size(symbol)
@@ -195,6 +222,11 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
     if dealing is None:
         return None, "INSUFFICIENT H4 DEALING RANGE"
     eq = dealing["equilibrium"]
+    if entry < dealing["low"] or entry > dealing["high"]:
+        return None, (
+            f"ENTRY OUTSIDE H4 DEALING RANGE (range {dealing['low']:.{digits}f}-"
+            f"{dealing['high']:.{digits}f}; entry={entry:.{digits}f})"
+        )
     if direction == "BUY" and location == "PREMIUM":
         return None, (
             f"BUY IN PREMIUM (H4 range {dealing['low']:.5f}-{dealing['high']:.5f}; "
@@ -236,8 +268,8 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
     setup = {
         "bias": wanted, "h4_bias": h4["bias"], "h1_bias": h1["bias"],
         "direction": direction, "setup_type": "CONTINUATION",
-        "entry": entry, "entry_low": round(zone_low, 5), "entry_high": round(zone_high, 5),
-        "sl": sl, "tp1": round(tp1, 5), "tp2": round(tp2, 5),
+        "entry": entry, "entry_low": round(zone_low, digits), "entry_high": round(zone_high, digits),
+        "sl": sl, "tp1": round(tp1, digits), "tp2": round(tp2, digits),
         "rr": round(tp1_rr, 2), "tp2_rr": round(tp2_rr, 2),
         "score": score, "grade": "S5" if score == 5 else "S4",
         "event": h1["event"] if h1["event"] != "NONE" else h4["event"],
