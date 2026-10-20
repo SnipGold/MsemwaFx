@@ -79,6 +79,10 @@ def format_alert(symbol, setup, candle_time, current_price, entry_status, instru
         f"*FVG:* {setup['fvg']}\n"
         f"*Sweep:* {setup['sweep']}\n"
         f"*Order Block:* {setup['order_block']}\n"
+        f"*Key Support:* {setup.get('key_support') or 'Not identified'}\n"
+        f"*Key Resistance:* {setup.get('key_resistance') or 'Not identified'}\n"
+        f"*Nearest Demand:* {setup.get('nearest_demand') or 'Not identified'}\n"
+        f"*Nearest Supply:* {setup.get('nearest_supply') or 'Not identified'}\n"
         f"*Signal Candle:* {candle_time}\n\n"
         f"_MsemwaFx — H4/H1 → M15_"
     )
