@@ -9,6 +9,7 @@ from config import (
 )
 from modules.structure import analyze_structure
 from modules.orderblock import detect_order_block
+from modules.zones import identify_key_zones
 
 
 def _atr(candles, period=14):
@@ -266,6 +267,7 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
         "reference_spread_pips": round(spread_price / pip, 1),
         "tp1_type": tp1_kind,
         "tp2_type": tp2_kind,
+        "key_zones": identify_key_zones(m15_candles, m15_candles[-1]["close"]),
     }
     return setup, "QUALIFIED"
 
