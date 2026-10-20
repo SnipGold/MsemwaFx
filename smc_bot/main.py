@@ -161,6 +161,16 @@ def run():
             continue
 
         setup, reason = analyze_pair_diagnostic(h4, h1, m15, symbol)
+        # Print the same H4 dealing range used by the decision engine for auditability.
+        h4_range = h4[-20:]
+        if h4_range:
+            range_high = max(float(c["high"]) for c in h4_range)
+            range_low = min(float(c["low"]) for c in h4_range)
+            equilibrium = (range_high + range_low) / 2
+            print(
+                f"  H4 DEALING RANGE: low={range_low:.5f} high={range_high:.5f} "
+                f"EQ={equilibrium:.5f} | last H4 close={float(h4[-1]['close']):.5f}"
+            )
         if not setup:
             print(f"  NO TRADE — {reason}")
             continue
