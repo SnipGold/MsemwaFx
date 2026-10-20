@@ -23,7 +23,7 @@ class DecisionLogicTests(unittest.TestCase):
         # valid confirmed pivot under the two-candle rule and would make the
         # expected range low of 5 contradictory.
         lows = [8, 7, 6, 5, 6, 5, 6, 7, 8, 9, 7, 6, 5, 6, 7, 8, 7, 6, 5, 4]
-        highs = [10, 9, 8, 7, 6, 8, 9, 10, 11, 15, 12, 10, 9, 10, 11, 12, 11, 10, 9, 30]
+        highs = [10, 9, 8, 7, 6, 8, 9, 10, 11, 15, 12, 10, 9, 8, 7, 6, 5, 4, 3, 30]
         for i, (lo, hi) in enumerate(zip(lows, highs)):
             candles.append(candle(i, hi, lo))
         result = _dealing_range(candles, lookback=20, pivot_span=2)
