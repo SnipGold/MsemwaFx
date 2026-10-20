@@ -79,15 +79,20 @@ def _touches(candle, level):
 
 
 def evaluate_entry_path(setup, m15):
-    """Determine entry status from the candle sequence after the signal candle."""
+    """Replay candles after the signal and report the latest valid trade state.
+
+    Never report an old entry touch as currently triggered if later candles
+    already reached SL or TP1. Intrabar order is unknown when key levels share
+    the same M15 candle, so those cases are marked ambiguous.
+    """
     signal_index = int(setup["signal_index"])
     entry = float(setup["entry"])
     sl = float(setup["sl"])
     tp1 = float(setup["tp1"])
+    entered = False
 
     for candle in m15[signal_index + 1:]:
         hit_entry = _touches(candle, entry)
-
         if setup["direction"] == "BUY":
             hit_sl = candle["low"] <= sl
             hit_tp1 = candle["high"] >= tp1
@@ -95,15 +100,26 @@ def evaluate_entry_path(setup, m15):
             hit_sl = candle["high"] >= sl
             hit_tp1 = candle["low"] <= tp1
 
-        if hit_entry and hit_sl:
-            return "AMBIGUOUS", "Entry and SL were both inside the same M15 candle. No chase."
-        if hit_entry:
-            return "ENTRY TRIGGERED", "Planned entry was touched after the signal candle."
-        if hit_sl:
-            return "INVALIDATED", "SL was reached before the planned entry."
-        if hit_tp1:
-            return "ENTRY MISSED", "Price reached TP1 without a confirmed planned-entry touch."
+        if not entered:
+            if hit_entry and (hit_sl or hit_tp1):
+                return "AMBIGUOUS", "Entry and SL/TP1 share an M15 candle; intrabar order is unknown."
+            if hit_sl:
+                return "INVALIDATED", "SL was reached before the planned entry."
+            if hit_tp1:
+                return "ENTRY MISSED", "Price reached TP1 before the planned entry."
+            if hit_entry:
+                entered = True
+            continue
 
+        if hit_sl and hit_tp1:
+            return "AMBIGUOUS", "SL and TP1 share an M15 candle after entry; intrabar order is unknown."
+        if hit_sl:
+            return "STOPPED OUT", "Entry was touched, then SL was reached. Do not enter now."
+        if hit_tp1:
+            return "TP1 HIT", "Entry was touched and TP1 was later reached. Do not chase."
+
+    if entered:
+        return "ENTRY TRIGGERED", "Entry was touched and no later SL/TP1 event was found."
     return "WAIT FOR ENTRY", f"Wait for the planned {setup['direction']} entry at {setup['entry']}."
 
 

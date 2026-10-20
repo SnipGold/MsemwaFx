@@ -54,6 +54,13 @@ def send_whatsapp(msg):
         return False
 
 
+def _zone_label(zone):
+    if not isinstance(zone, dict):
+        return "Not identified"
+    freshness = "fresh" if zone.get("fresh") else f"{zone.get('touches', 0)} retest(s)"
+    return f"{zone.get('low')}–{zone.get('high')} ({freshness})"
+
+
 def format_alert(symbol, setup, candle_time, current_price, entry_status, instruction):
     return (
         f"🚨 *MsemwaFx Institutional Alert*\n\n"
@@ -79,6 +86,10 @@ def format_alert(symbol, setup, candle_time, current_price, entry_status, instru
         f"*FVG:* {setup['fvg']}\n"
         f"*Sweep:* {setup['sweep']}\n"
         f"*Order Block:* {setup['order_block']}\n"
+        f"*Key Support:* {setup.get('key_support') or 'Not identified'}\n"
+        f"*Key Resistance:* {setup.get('key_resistance') or 'Not identified'}\n"
+        f"*Nearest Demand:* {_zone_label(setup.get('nearest_demand'))}\n"
+        f"*Nearest Supply:* {_zone_label(setup.get('nearest_supply'))}\n"
         f"*Signal Candle:* {candle_time}\n\n"
         f"_MsemwaFx — H4/H1 → M15_"
     )
@@ -123,7 +134,7 @@ def format_scout(symbol, h4, h1, current_price, m15_time):
         f"*H1 Structure:* {h1.get('event', 'NONE')}\n\n"
         f"📍 *Current Price:* {current_price}\n"
         f"⏱️ *M15 Candle:* {m15_time}\n\n"
-        f"*Status:* WATCH — waiting for M15 liquidity sweep, displacement and valid OB/FVG.\n"
+        f"*Status:* WATCH — waiting for an M15 pullback into a confirmed OB; FVG is optional and no sweep is required.\n"
         f"*Action:* Do not enter from Scout alert. Wait for Institutional confirmation.\n\n"
         f"_MsemwaFx Scout — H4/H1 → M15_"
     )

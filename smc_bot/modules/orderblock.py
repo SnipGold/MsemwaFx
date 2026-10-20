@@ -31,76 +31,43 @@ def _find_sweep(candles, bias, lookback=32, window=5):
     return None
 
 
-def detect_order_block(candles, bias):
-    """Find the displacement-origin OB/FVG zone linked to the latest aligned sweep."""
-    if len(candles) < 20:
+def detect_order_block(candles, bias, lookback=32, confirm_bars=8):
+    """Find an opposing candle whose zone is followed by a close beyond its edge.
+
+    This does not require a liquidity sweep or a displacement candle. The later
+    close confirms the zone's directional relevance; the OB remains a context
+    zone, not a standalone entry trigger.
+    """
+    if len(candles) < 12 or bias not in ("BULLISH", "BEARISH"):
         return None
 
-    sweep = _find_sweep(candles, bias)
-    if not sweep:
-        return None
-
-    s = sweep["index"]
-    end = min(len(candles) - 1, s + 8)
-    displacement = None
-
-    for i in range(s + 1, end + 1):
-        previous = candles[max(s, i - 2):i]
-        if not previous:
+    start = max(0, len(candles) - lookback - confirm_bars)
+    last_confirmed = None
+    for i in range(start, len(candles) - 1):
+        candle = candles[i]
+        if bias == "BULLISH" and float(candle["close"]) >= float(candle["open"]):
+            continue
+        if bias == "BEARISH" and float(candle["close"]) <= float(candle["open"]):
             continue
 
-        prev_high = max(c["high"] for c in previous)
-        prev_low = min(c["low"] for c in previous)
+        end = min(len(candles), i + confirm_bars + 1)
+        later = candles[i + 1:end]
+        if bias == "BULLISH":
+            confirms = [j for j, c in enumerate(later, start=i+1)
+                        if float(c["close"]) > float(candle["high"])]
+        else:
+            confirms = [j for j, c in enumerate(later, start=i+1)
+                        if float(c["close"]) < float(candle["low"])]
+        if confirms:
+            # Prefer the most recent confirmed opposing candle, not a sweep-specific one.
+            signal_index = confirms[-1]
+            last_confirmed = {
+                "type": "BULLISH_OB" if bias == "BULLISH" else "BEARISH_OB",
+                "low": float(candle["low"]),
+                "high": float(candle["high"]),
+                "index": i,
+                "signal_index": signal_index,
+                "sweep": None,
+            }
 
-        if bias == "BULLISH" and candles[i]["close"] > prev_high:
-            displacement = i
-            break
-
-        if bias == "BEARISH" and candles[i]["close"] < prev_low:
-            displacement = i
-            break
-
-    if displacement is None:
-        return None
-
-    candidates = []
-    for i in range(s + 1, displacement):
-        c = candles[i]
-        if bias == "BULLISH" and c["close"] < c["open"]:
-            candidates.append((i, c))
-        elif bias == "BEARISH" and c["close"] > c["open"]:
-            candidates.append((i, c))
-
-    if not candidates:
-        return None
-
-    # Prefer the structural origin near the sweep, not a micro-OB at the top/bottom of the range.
-    if bias == "BULLISH":
-        idx, ob = min(candidates, key=lambda x: (x[1]["low"], x[0]))
-    else:
-        idx, ob = max(candidates, key=lambda x: (x[1]["high"], -x[0]))
-
-    zone_low = ob["low"]
-    zone_high = ob["high"]
-
-    # Merge the FVG made by the displacement candle when it belongs to the same leg.
-    if displacement >= 2:
-        c1 = candles[displacement - 2]
-        c3 = candles[displacement]
-
-        if bias == "BULLISH" and c1["high"] < c3["low"]:
-            zone_low = min(zone_low, c1["high"])
-            zone_high = max(zone_high, c3["low"])
-
-        elif bias == "BEARISH" and c1["low"] > c3["high"]:
-            zone_low = min(zone_low, c3["high"])
-            zone_high = max(zone_high, c1["low"])
-
-    return {
-        "type": "BULLISH_OB" if bias == "BULLISH" else "BEARISH_OB",
-        "low": zone_low,
-        "high": zone_high,
-        "index": idx,
-        "signal_index": displacement,
-        "sweep": sweep,
-    }
+    return last_confirmed
