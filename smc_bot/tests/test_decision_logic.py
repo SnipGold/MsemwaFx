@@ -18,8 +18,11 @@ def candle(i, high, low, close=None):
 class DecisionLogicTests(unittest.TestCase):
     def test_dealing_range_uses_confirmed_pivots_not_latest_unconfirmed_extremes(self):
         candles = []
-        # Stable background with a confirmed swing low at 4 and swing high at 9.
-        lows = [8, 7, 6, 5, 2, 5, 6, 7, 8, 9, 7, 6, 5, 6, 7, 8, 7, 6, 5, 4]
+        # Stable background with confirmed swing lows at 3/5 and swing high at 9.
+        # Keep the low at index 4 above 5: a value of 2 there is itself a
+        # valid confirmed pivot under the two-candle rule and would make the
+        # expected range low of 5 contradictory.
+        lows = [8, 7, 6, 5, 6, 5, 6, 7, 8, 9, 7, 6, 5, 6, 7, 8, 7, 6, 5, 4]
         highs = [10, 9, 8, 7, 6, 8, 9, 10, 11, 15, 12, 10, 9, 10, 11, 12, 11, 10, 9, 30]
         for i, (lo, hi) in enumerate(zip(lows, highs)):
             candles.append(candle(i, hi, lo))
