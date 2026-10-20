@@ -4,6 +4,10 @@ on:
   push:
     paths:
       - ".github/workflows/smc_bot.yml"
+  pull_request:
+    paths:
+      - "smc_bot/**"
+      - ".github/workflows/smc_bot.yml"
   schedule:
     - cron: "12,27,42,57 * * * *"
   workflow_dispatch:
@@ -16,7 +20,30 @@ permissions:
   contents: write
 
 jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        working-directory: smc_bot
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run unit tests
+        working-directory: smc_bot
+        run: python -m unittest discover -s tests -v
+
   scan:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
