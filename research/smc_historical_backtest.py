@@ -33,7 +33,7 @@ def fvg(d,i):
     if d.high.iloc[i]<d.low.iloc[i-2]: return ("SELL",d.high.iloc[i],d.low.iloc[i-2])
     return None
 
-def signal(d,i,model):
+def signal(d,i,model,code):
     if i<30:return None
     row=d.iloc[i]; a=atr(d).iloc[i]
     if not np.isfinite(a) or a<=0:return None
@@ -100,7 +100,7 @@ def main():
             signals=[]
             for i in range(30,len(d)-1):
                 if i<=active_until: continue
-                s=signal(d,i,model)
+                s=signal(d,i,model,code)
                 if s:
                     signals.append(s)
                     # each target gets own independent simulation below; signal generation independent of target
