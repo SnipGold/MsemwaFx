@@ -9,6 +9,7 @@ from config import (
 )
 from modules.structure import analyze_structure
 from modules.orderblock import detect_order_block
+from modules.zones import analyze_zones
 
 
 def _atr(candles, period=14):
@@ -237,6 +238,7 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
 
     tp1_rr = abs(tp1 - entry) / risk
     tp2_rr = abs(tp2 - entry) / risk
+    zones = analyze_zones(m15_candles)
     setup = {
         "bias": wanted,
         "h4_bias": h4["bias"],
@@ -266,6 +268,10 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
         "reference_spread_pips": round(spread_price / pip, 1),
         "tp1_type": tp1_kind,
         "tp2_type": tp2_kind,
+        "nearest_demand": zones["demand"][0] if zones["demand"] else None,
+        "nearest_supply": zones["supply"][0] if zones["supply"] else None,
+        "key_support": zones["support"],
+        "key_resistance": zones["resistance"],
     }
     return setup, "QUALIFIED"
 
