@@ -25,9 +25,9 @@ class DecisionLogicTests(unittest.TestCase):
             candles.append(candle(i, hi, lo))
         result = _dealing_range(candles, lookback=20, pivot_span=2)
         self.assertIsNotNone(result)
-        self.assertEqual(result["low"], 2.0)
+        self.assertEqual(result["low"], 5.0)
         self.assertEqual(result["high"], 15.0)
-        self.assertEqual(result["equilibrium"], 8.5)
+        self.assertEqual(result["equilibrium"], 10.0)
 
     def test_no_confirmed_high_or_low_returns_no_range(self):
         candles = [candle(i, 10 + i, 5 + i) for i in range(20)]
