@@ -120,6 +120,28 @@ def _direction_candidates(h4_bias, h1_bias):
     return ["BUY", "SELL"]
 
 
+def _dealing_range(candles, lookback=20):
+    """Return a recent closed-HTF dealing range and its 50% equilibrium."""
+    sample = candles[-lookback:]
+    if not sample:
+        return None
+    high = max(float(c["high"]) for c in sample)
+    low = min(float(c["low"]) for c in sample)
+    return {"high": high, "low": low, "equilibrium": (high + low) / 2}
+
+
+def _premium_discount(entry, direction, h4_candles):
+    """Classify entry location against the recent H4 range, not noisy M15 range."""
+    dealing = _dealing_range(h4_candles)
+    if not dealing or dealing["high"] <= dealing["low"]:
+        return None, dealing
+    if entry == dealing["equilibrium"]:
+        return "EQUILIBRIUM", dealing
+    if entry > dealing["equilibrium"]:
+        return "PREMIUM", dealing
+    return "DISCOUNT", dealing
+
+
 def _structure_confirmed(h4, h1):
     valid_events = {"BOS", "CHoCH", "CHOCH"}
     return h4.get("event") in valid_events or h1.get("event") in valid_events
@@ -169,14 +191,20 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
     if risk < min_structural_risk:
         return None, "STRUCTURAL RISK TOO SMALL FOR ATR/SPREAD"
 
-    recent = m15_candles[max(0, len(m15_candles) - 60):]
-    dealing_high = max(float(c["high"]) for c in recent)
-    dealing_low = min(float(c["low"]) for c in recent)
-    eq = (dealing_high + dealing_low) / 2
-    if direction == "BUY" and entry > eq:
-        return None, "BUY IN PREMIUM"
-    if direction == "SELL" and entry < eq:
-        return None, "SELL IN DISCOUNT"
+    location, dealing = _premium_discount(entry, direction, h4_candles)
+    if dealing is None:
+        return None, "INSUFFICIENT H4 DEALING RANGE"
+    eq = dealing["equilibrium"]
+    if direction == "BUY" and location == "PREMIUM":
+        return None, (
+            f"BUY IN PREMIUM (H4 range {dealing['low']:.5f}-{dealing['high']:.5f}; "
+            f"EQ={eq:.5f}; entry={entry:.5f})"
+        )
+    if direction == "SELL" and location == "DISCOUNT":
+        return None, (
+            f"SELL IN DISCOUNT (H4 range {dealing['low']:.5f}-{dealing['high']:.5f}; "
+            f"EQ={eq:.5f}; entry={entry:.5f})"
+        )
 
     min_target_distance = max(min_cost, risk * MIN_TP1_RR)
     levels = _liquidity_levels(m15_candles, entry, direction, min_target_distance, symbol)
@@ -217,7 +245,7 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
         "sweep": "NOT REQUIRED", "order_block": ob["type"],
         "signal_index": signal_index, "signal_candle": m15_candles[signal_index]["time"],
         "risk_pips": round(risk_pips, 1), "lot_size": DEFAULT_LOT_SIZE,
-        "atr_pips": round(atr / pip, 1), "dealing_eq": round(eq, 5),
+        "atr_pips": round(atr / pip, 1), "dealing_eq": round(eq, 5), "dealing_high": round(dealing["high"], 5), "dealing_low": round(dealing["low"], 5), "entry_location": location,
         "reference_spread_pips": round(spread_price / pip, 1),
         "tp1_type": tp1_kind, "tp2_type": tp2_kind,
         "nearest_demand": zones["demand"][0] if zones["demand"] else None,
@@ -233,6 +261,12 @@ def analyze_pair_diagnostic(h4_candles, h1_candles, m15_candles, symbol=None):
 
     candidates = []
     diagnostics = []
+    dealing = _dealing_range(h4_candles)
+    if dealing:
+        diagnostics.append(
+            f"H4 RANGE low={dealing['low']:.5f} high={dealing['high']:.5f} "
+            f"EQ={dealing['equilibrium']:.5f}"
+        )
     for direction in _direction_candidates(h4["bias"], h1["bias"]):
         setup, reason = _build_candidate(
             h4, h1, h4_candles, h1_candles, m15_candles, direction, symbol
