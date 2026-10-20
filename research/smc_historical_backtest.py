@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Historical replay: compare selected SMC entry models at 1R-5R.
 Uses only committed replay_data M15 candles; no future data for signal decisions.
+No daily loss limit or daily trade lock is applied in this research backtest.
 OHLC same-bar SL/TP is conservatively counted as SL first. Costs excluded.
 """
 import csv
