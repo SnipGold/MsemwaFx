@@ -79,6 +79,10 @@ def format_alert(symbol, setup, candle_time, current_price, entry_status, instru
         f"*FVG:* {setup['fvg']}\n"
         f"*Sweep:* {setup['sweep']}\n"
         f"*Order Block:* {setup['order_block']}\n"
+        f"*Demand Zone:* {((setup.get('key_zones') or {}).get('demand') or {}).get('low', 'N/A')} - {((setup.get('key_zones') or {}).get('demand') or {}).get('high', 'N/A')}\n"
+        f"*Supply Zone:* {((setup.get('key_zones') or {}).get('supply') or {}).get('low', 'N/A')} - {((setup.get('key_zones') or {}).get('supply') or {}).get('high', 'N/A')}\n"
+        f"*Key Support/Resistance:* {((setup.get('key_zones') or {}).get('support', 'N/A'))} / {((setup.get('key_zones') or {}).get('resistance', 'N/A'))}\n"
+
         f"*Signal Candle:* {candle_time}\n\n"
         f"_MsemwaFx — H4/H1 → M15_"
     )
