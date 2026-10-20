@@ -54,6 +54,13 @@ def send_whatsapp(msg):
         return False
 
 
+def _zone_label(zone):
+    if not isinstance(zone, dict):
+        return "Not identified"
+    freshness = "fresh" if zone.get("fresh") else f"{zone.get('touches', 0)} retest(s)"
+    return f"{zone.get('low')}–{zone.get('high')} ({freshness})"
+
+
 def format_alert(symbol, setup, candle_time, current_price, entry_status, instruction):
     return (
         f"🚨 *MsemwaFx Institutional Alert*\n\n"
@@ -81,8 +88,8 @@ def format_alert(symbol, setup, candle_time, current_price, entry_status, instru
         f"*Order Block:* {setup['order_block']}\n"
         f"*Key Support:* {setup.get('key_support') or 'Not identified'}\n"
         f"*Key Resistance:* {setup.get('key_resistance') or 'Not identified'}\n"
-        f"*Nearest Demand:* {setup.get('nearest_demand') or 'Not identified'}\n"
-        f"*Nearest Supply:* {setup.get('nearest_supply') or 'Not identified'}\n"
+        f"*Nearest Demand:* {_zone_label(setup.get('nearest_demand'))}\n"
+        f"*Nearest Supply:* {_zone_label(setup.get('nearest_supply'))}\n"
         f"*Signal Candle:* {candle_time}\n\n"
         f"_MsemwaFx — H4/H1 → M15_"
     )
