@@ -134,7 +134,7 @@ def format_scout(symbol, h4, h1, current_price, m15_time):
         f"*H1 Structure:* {h1.get('event', 'NONE')}\n\n"
         f"📍 *Current Price:* {current_price}\n"
         f"⏱️ *M15 Candle:* {m15_time}\n\n"
-        f"*Status:* WATCH — waiting for M15 liquidity sweep, displacement and valid OB/FVG.\n"
+        f"*Status:* WATCH — waiting for an M15 pullback into a confirmed OB; FVG is optional and no sweep is required.\n"
         f"*Action:* Do not enter from Scout alert. Wait for Institutional confirmation.\n\n"
         f"_MsemwaFx Scout — H4/H1 → M15_"
     )
