@@ -100,19 +100,24 @@ def _liquidity_levels(candles, entry, direction, min_distance, symbol=None):
 
 
 def _direction_candidates(h4_bias, h1_bias):
+    # Candidate directions must use the BUY/SELL vocabulary expected by
+    # _build_candidate; HTF bias labels (BULLISH/BEARISH) are not trade directions.
+    bias_to_direction = {"BULLISH": "BUY", "BEARISH": "SELL"}
     bullish = "BULLISH"
     bearish = "BEARISH"
 
     if h4_bias == h1_bias and h4_bias in (bullish, bearish):
-        return [h4_bias]
+        return [bias_to_direction[h4_bias]]
 
     if h1_bias in (bullish, bearish):
-        return [h1_bias, bearish if h1_bias == bullish else bullish]
+        other = bearish if h1_bias == bullish else bullish
+        return [bias_to_direction[h1_bias], bias_to_direction[other]]
 
     if h4_bias in (bullish, bearish):
-        return [h4_bias, bearish if h4_bias == bullish else bullish]
+        other = bearish if h4_bias == bullish else bullish
+        return [bias_to_direction[h4_bias], bias_to_direction[other]]
 
-    return [bullish, bearish]
+    return ["BUY", "SELL"]
 
 
 def _structure_confirmed(h4, h1):
@@ -232,7 +237,8 @@ def analyze_pair_diagnostic(h4_candles, h1_candles, m15_candles, symbol=None):
         setup, reason = _build_candidate(
             h4, h1, h4_candles, h1_candles, m15_candles, direction, symbol
         )
-        diagnostics.append(f"{direction}: {reason}")
+        label = "BULLISH" if direction == "BUY" else "BEARISH"
+        diagnostics.append(f"{label}: {reason}")
         if setup:
             candidates.append(setup)
 
