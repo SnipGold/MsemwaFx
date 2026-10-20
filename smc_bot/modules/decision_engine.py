@@ -116,32 +116,31 @@ def _direction_candidates(h4_bias, h1_bias):
 
 
 def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, symbol):
-    bias = "BULLISH" if direction == "BUY" else "BEARISH"
-    ob = detect_order_block(m15_candles, bias)
+    """Build a continuation setup without mandatory sweep, displacement, or FVG filters."""
+    wanted = "BULLISH" if direction == "BUY" else "BEARISH"
+    if h4["bias"] != wanted or h1["bias"] != wanted:
+        return None, f"HTF MISALIGNMENT (H4={h4['bias']}, H1={h1['bias']})"
+
+    ob = detect_order_block(m15_candles, wanted)
     if not ob:
-        return None, f"NO {bias} SWEEP-LEG OB/DISPLACEMENT"
+        return None, f"NO CONFIRMED {wanted} ORDER BLOCK"
 
-    signal_index = ob["signal_index"]
+    signal_index = int(ob["signal_index"])
     fvg = _last_aligned_fvg(m15_candles, signal_index, direction)
-    if fvg is None:
-        return None, "NO ALIGNED FVG"
-
-    sweep = ob["sweep"]
-    expected_sweep = "SELL_SIDE_SWEEP" if direction == "BUY" else "BUY_SIDE_SWEEP"
-    if sweep["type"] != expected_sweep:
-        return None, f"OPPOSING SWEEP ({sweep['type']})"
-
+    # FVG is contextual confluence only; its absence must not block an otherwise valid setup.
     zone_low, zone_high = float(ob["low"]), float(ob["high"])
     entry = round((zone_low + zone_high) / 2, 5)
     atr = _atr(m15_candles)
     if atr <= 0:
         return None, "NO M15 ATR"
 
+    # Structural SL uses the OB boundary plus recent swing context, not a liquidity sweep.
+    lookback = m15_candles[max(0, signal_index - 5):signal_index + 1]
     if direction == "BUY":
-        structural_low = min(zone_low, float(sweep["low"]))
+        structural_low = min([zone_low] + [float(c["low"]) for c in lookback])
         sl = round(structural_low - atr * MIN_ATR_SL_MULTIPLIER, 5)
     else:
-        structural_high = max(zone_high, float(sweep["high"]))
+        structural_high = max([zone_high] + [float(c["high"]) for c in lookback])
         sl = round(structural_high + atr * MIN_ATR_SL_MULTIPLIER, 5)
 
     risk = abs(entry - sl)
@@ -157,10 +156,9 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
         return None, "STRUCTURAL RISK TOO SMALL FOR ATR/SPREAD"
 
     recent = m15_candles[max(0, len(m15_candles) - 60):]
-    dealing_high = max(c["high"] for c in recent)
-    dealing_low = min(c["low"] for c in recent)
+    dealing_high = max(float(c["high"]) for c in recent)
+    dealing_low = min(float(c["low"]) for c in recent)
     eq = (dealing_high + dealing_low) / 2
-
     if direction == "BUY" and entry > eq:
         return None, "BUY IN PREMIUM"
     if direction == "SELL" and entry < eq:
@@ -168,15 +166,13 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
 
     min_target_distance = max(min_cost, risk * MIN_TP1_RR)
     levels = _liquidity_levels(m15_candles, entry, direction, min_target_distance, symbol)
-
     tp1_kind = tp2_kind = None
     tp1 = tp2 = None
     for kind, level in levels:
         rr = abs(level - entry) / risk
         if tp1 is None and rr >= MIN_TP1_RR:
             tp1, tp1_kind = level, kind
-            continue
-        if tp1 is not None and rr >= MIN_TP2_RR:
+        elif tp1 is not None and rr >= MIN_TP2_RR:
             tp2, tp2_kind = level, kind
             break
 
@@ -184,94 +180,35 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
         return None, "NO LIQUIDITY FAR ENOUGH FOR TP1"
     if tp2 is None:
         return None, "NO EXTERNAL LIQUIDITY FOR TP2"
-
-    # Hard direction/price validation: never publish a BUY with sell-side SL/TP geometry.
     if direction == "BUY" and not (sl < entry < tp1 < tp2):
         return None, "DIRECTION/LEVEL MISMATCH — BUY requires SL < entry < TP1 < TP2"
     if direction == "SELL" and not (tp2 < tp1 < entry < sl):
         return None, "DIRECTION/LEVEL MISMATCH — SELL requires TP2 < TP1 < entry < SL"
 
-    wanted = "BULLISH" if direction == "BUY" else "BEARISH"
-    htf_aligned = h4["bias"] == h1["bias"] == wanted
-    h1_aligned = h1["bias"] == wanted
-    h4_aligned = h4["bias"] == wanted
-    opposite_h1 = h1["bias"] in ("BULLISH", "BEARISH") and h1["bias"] != wanted
-    opposite_h4 = h4["bias"] in ("BULLISH", "BEARISH") and h4["bias"] != wanted
-    has_htf_context = h1["bias"] in ("BULLISH", "BEARISH") or h4["bias"] in ("BULLISH", "BEARISH")
-
-    reversal_confirmed = (
-        (h1_aligned and h1["event"] in ("BOS", "CHoCH"))
-        or (
-            h1["bias"] == "NEUTRAL"
-            and opposite_h4
-            and h4["event"] in ("BOS", "CHoCH")
-        )
-        or (
-            h4["bias"] == "NEUTRAL"
-            and opposite_h1
-            and h1["event"] == "CHoCH"
-        )
-        or (
-            opposite_h4
-            and opposite_h1
-            and h1["event"] in ("BOS", "CHoCH")
-        )
-    )
-
-    if htf_aligned:
-        setup_type = "CONTINUATION"
-        grade = "S5"
-        score = 5
-    elif h1_aligned and (h4_aligned or h4["bias"] == "NEUTRAL"):
-        setup_type = "CONTINUATION"
-        grade = "S4"
-        score = 4
-    elif has_htf_context and reversal_confirmed and ob["signal_index"] > ob["sweep"]["index"]:
-        setup_type = "REVERSAL"
-        grade = "S4"
-        score = 4
-    else:
-        return None, "REVERSAL NEEDS STRUCTURAL CONFIRMATION"
-
+    zones = analyze_zones(m15_candles)
+    score = 5 if h4["event"] == "BOS" and h1["event"] == "BOS" else 4
     if score < MIN_SCORE:
         return None, f"SCORE TOO LOW ({score}/5)"
-
     tp1_rr = abs(tp1 - entry) / risk
     tp2_rr = abs(tp2 - entry) / risk
-    zones = analyze_zones(m15_candles)
     setup = {
-        "bias": wanted,
-        "h4_bias": h4["bias"],
-        "h1_bias": h1["bias"],
-        "direction": direction,
-        "setup_type": setup_type,
-        "entry": entry,
-        "entry_low": round(zone_low, 5),
-        "entry_high": round(zone_high, 5),
-        "sl": sl,
-        "tp1": round(tp1, 5),
-        "tp2": round(tp2, 5),
-        "rr": round(tp1_rr, 2),
-        "tp2_rr": round(tp2_rr, 2),
-        "score": score,
-        "grade": grade,
+        "bias": wanted, "h4_bias": h4["bias"], "h1_bias": h1["bias"],
+        "direction": direction, "setup_type": "CONTINUATION",
+        "entry": entry, "entry_low": round(zone_low, 5), "entry_high": round(zone_high, 5),
+        "sl": sl, "tp1": round(tp1, 5), "tp2": round(tp2, 5),
+        "rr": round(tp1_rr, 2), "tp2_rr": round(tp2_rr, 2),
+        "score": score, "grade": "S5" if score == 5 else "S4",
         "event": h1["event"] if h1["event"] != "NONE" else h4["event"],
-        "fvg": fvg["type"],
-        "sweep": sweep["type"],
-        "order_block": ob["type"],
-        "signal_index": signal_index,
-        "signal_candle": m15_candles[signal_index]["time"],
-        "risk_pips": round(risk_pips, 1),
-        "lot_size": DEFAULT_LOT_SIZE,
-        "atr_pips": round(atr / pip, 1),
-        "dealing_eq": round(eq, 5),
+        "fvg": fvg["type"] if fvg else "NONE (OPTIONAL)",
+        "sweep": "NOT REQUIRED", "order_block": ob["type"],
+        "signal_index": signal_index, "signal_candle": m15_candles[signal_index]["time"],
+        "risk_pips": round(risk_pips, 1), "lot_size": DEFAULT_LOT_SIZE,
+        "atr_pips": round(atr / pip, 1), "dealing_eq": round(eq, 5),
         "reference_spread_pips": round(spread_price / pip, 1),
-        "tp1_type": tp1_kind,
-        "tp2_type": tp2_kind,
+        "tp1_type": tp1_kind, "tp2_type": tp2_kind,
         "nearest_demand": zones["demand"][0] if zones["demand"] else None,
         "nearest_supply": zones["supply"][0] if zones["supply"] else None,
-        "key_support": zones["support"],
-        "key_resistance": zones["resistance"],
+        "key_support": zones["support"], "key_resistance": zones["resistance"],
     }
     return setup, "QUALIFIED"
 
