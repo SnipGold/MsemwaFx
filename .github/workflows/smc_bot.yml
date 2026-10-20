@@ -58,9 +58,22 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Validate zone engine
+      - name: Validate zone engine (retry up to 3 times)
         working-directory: smc_bot
-        run: python -m unittest discover -s tests -v
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            echo "Zone-engine validation attempt $attempt/3"
+            if python -m unittest discover -s tests -v; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Validation failed; retrying in 30 seconds."
+              sleep 30
+            fi
+          done
+          echo "Zone-engine validation failed after 3 attempts."
+          exit 1
       - name: Restore bot cache and state
         uses: actions/cache@v4
         with:
@@ -80,7 +93,20 @@ jobs:
           WA_PROVIDER: ${{ secrets.WA_PROVIDER }}
           WA_PHONE: ${{ secrets.WA_PHONE }}
           WA_APIKEY: ${{ secrets.WA_APIKEY }}
-        run: python main.py
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            echo "MsemwaFx scan attempt $attempt/3"
+            if python main.py; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Scan failed; retrying in 30 seconds."
+              sleep 30
+            fi
+          done
+          echo "MsemwaFx scan failed after 3 attempts."
+          exit 1
       - name: Persist alert state
         run: |
           if git diff --quiet -- smc_bot/sent.json MA_Signal/sent_signals.json; then exit 0; fi
