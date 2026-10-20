@@ -118,17 +118,12 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
     bias = "BULLISH" if direction == "BUY" else "BEARISH"
     ob = detect_order_block(m15_candles, bias)
     if not ob:
-        return None, f"NO {bias} SWEEP-LEG OB/DISPLACEMENT"
+        return None, f"NO {bias} ORDER BLOCK / STRUCTURE BREAK"
 
     signal_index = ob["signal_index"]
     fvg = _last_aligned_fvg(m15_candles, signal_index, direction)
     if fvg is None:
         return None, "NO ALIGNED FVG"
-
-    sweep = ob["sweep"]
-    expected_sweep = "SELL_SIDE_SWEEP" if direction == "BUY" else "BUY_SIDE_SWEEP"
-    if sweep["type"] != expected_sweep:
-        return None, f"OPPOSING SWEEP ({sweep['type']})"
 
     zone_low, zone_high = float(ob["low"]), float(ob["high"])
     entry = round((zone_low + zone_high) / 2, 5)
@@ -137,11 +132,9 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
         return None, "NO M15 ATR"
 
     if direction == "BUY":
-        structural_low = min(zone_low, float(sweep["low"]))
-        sl = round(structural_low - atr * MIN_ATR_SL_MULTIPLIER, 5)
+        sl = round(zone_low - atr * MIN_ATR_SL_MULTIPLIER, 5)
     else:
-        structural_high = max(zone_high, float(sweep["high"]))
-        sl = round(structural_high + atr * MIN_ATR_SL_MULTIPLIER, 5)
+        sl = round(zone_high + atr * MIN_ATR_SL_MULTIPLIER, 5)
 
     risk = abs(entry - sl)
     pip = _pip_size(symbol)
@@ -225,7 +218,7 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
         setup_type = "CONTINUATION"
         grade = "S4"
         score = 4
-    elif has_htf_context and reversal_confirmed and ob["signal_index"] > ob["sweep"]["index"]:
+    elif has_htf_context and reversal_confirmed and ob["signal_index"] > ob["index"]:
         setup_type = "REVERSAL"
         grade = "S4"
         score = 4
@@ -255,7 +248,7 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
         "grade": grade,
         "event": h1["event"] if h1["event"] != "NONE" else h4["event"],
         "fvg": fvg["type"],
-        "sweep": sweep["type"],
+        "sweep": "NOT_REQUIRED",
         "order_block": ob["type"],
         "signal_index": signal_index,
         "signal_candle": m15_candles[signal_index]["time"],
