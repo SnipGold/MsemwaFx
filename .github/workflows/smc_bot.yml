@@ -9,7 +9,7 @@ on:
       - "smc_bot/**"
       - ".github/workflows/smc_bot.yml"
   schedule:
-    - cron: "12,27,42,57 * * * *"
+    - cron: "7,22,37,52 * * * *"
   workflow_dispatch:
 
 concurrency:
