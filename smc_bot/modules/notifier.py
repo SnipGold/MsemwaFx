@@ -122,19 +122,21 @@ def send_telegram_scout(msg):
         return False
 
 
-def format_scout(symbol, h4, h1, current_price, m15_time):
-    direction = "BUY" if h4["bias"] == "BULLISH" else "SELL"
+def format_scout(symbol, h4, h1, current_price, m15_time, missing_confirmation="M15 entry conditions are not yet confirmed"):
+    bias = h4.get("bias", "NEUTRAL")
+    direction = "BUY" if bias == "BULLISH" else "SELL" if bias == "BEARISH" else "WAIT"
     return (
-        f"👀 *MsemwaFx Scout — Setup Developing*\n\n"
-        f"*Pair:* {symbol}\n"
-        f"*Watch Direction:* {direction}\n"
-        f"*H4 Bias:* {h4['bias']}\n"
-        f"*H4 Structure:* {h4.get('event', 'NONE')}\n"
-        f"*H1 Bias:* {h1['bias']}\n"
-        f"*H1 Structure:* {h1.get('event', 'NONE')}\n\n"
-        f"📍 *Current Price:* {current_price}\n"
-        f"⏱️ *M15 Candle:* {m15_time}\n\n"
-        f"*Status:* WATCH — waiting for an M15 pullback into a confirmed OB; FVG is optional and no sweep is required.\n"
-        f"*Action:* Do not enter from Scout alert. Wait for Institutional confirmation.\n\n"
-        f"_MsemwaFx Scout — H4/H1 → M15_"
+        f"👀 *MsemwaFx Scout — EARLY SETUP WATCH*\\n\\n"
+        f"*Pair:* {symbol}\\n"
+        f"*Watch Direction:* {direction}\\n"
+        f"*H4 Bias:* {h4.get('bias', 'UNKNOWN')}\\n"
+        f"*H4 Structure:* {h4.get('event', 'NONE')}\\n"
+        f"*H1 Bias:* {h1.get('bias', 'UNKNOWN')}\\n"
+        f"*H1 Structure:* {h1.get('event', 'NONE')}\\n\\n"
+        f"📍 *Current Price:* {current_price}\\n"
+        f"⏱️ *Latest closed M15 candle:* {m15_time}\\n\\n"
+        f"*Why not confirmed yet:* {missing_confirmation}\\n"
+        f"*Status:* WATCH ONLY — wait for a valid M15 order block and pullback. FVG is optional; a sweep is not mandatory.\\n"
+        f"*Action:* DO NOT ENTER from this Scout warning. Wait for the separate Institutional confirmation alert with Entry, SL, TP and at least 1:2 RR.\\n\\n"
+        f"_MsemwaFx Scout — early warning, not a trade signal_\\n"
     )
