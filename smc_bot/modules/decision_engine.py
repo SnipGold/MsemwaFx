@@ -227,14 +227,18 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
             f"ENTRY OUTSIDE H4 DEALING RANGE (range {dealing['low']:.{digits}f}-"
             f"{dealing['high']:.{digits}f}; entry={entry:.{digits}f})"
         )
-    if direction == "BUY" and location == "PREMIUM":
+    # Strict ICT location filter: buys must be below EQ (discount), sells
+    # must be above EQ (premium). Equilibrium is not a valid entry location.
+    if direction == "BUY" and location != "DISCOUNT":
         return None, (
-            f"BUY IN PREMIUM (H4 range {dealing['low']:.5f}-{dealing['high']:.5f}; "
+            f"BUY REJECTED — ENTRY NOT IN DISCOUNT (location={location}; "
+            f"H4 range {dealing['low']:.5f}-{dealing['high']:.5f}; "
             f"EQ={eq:.5f}; entry={entry:.5f})"
         )
-    if direction == "SELL" and location == "DISCOUNT":
+    if direction == "SELL" and location != "PREMIUM":
         return None, (
-            f"SELL IN DISCOUNT (H4 range {dealing['low']:.5f}-{dealing['high']:.5f}; "
+            f"SELL REJECTED — ENTRY NOT IN PREMIUM (location={location}; "
+            f"H4 range {dealing['low']:.5f}-{dealing['high']:.5f}; "
             f"EQ={eq:.5f}; entry={entry:.5f})"
         )
 
