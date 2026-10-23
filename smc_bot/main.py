@@ -173,6 +173,50 @@ def run():
             )
         if not setup:
             print(f"  NO TRADE — {reason}")
+
+            # Scout is an early-warning channel, independent of the confirmed
+            # trade pipeline. Only alert when H4/H1 agree directionally and
+            # at least one HTF has a confirmed BOS/CHoCH. Never treat this as entry.
+            h4_state = analyze_structure(h4)
+            h1_state = analyze_structure(h1)
+            aligned_bias = h4_state.get("bias")
+            valid_events = {"BOS", "CHoCH", "CHOCH"}
+            scout_ready = (
+                aligned_bias in {"BULLISH", "BEARISH"}
+                and h1_state.get("bias") == aligned_bias
+                and (
+                    h4_state.get("event") in valid_events
+                    or h1_state.get("event") in valid_events
+                )
+            )
+            if scout_ready:
+                scout_direction = "BUY" if aligned_bias == "BULLISH" else "SELL"
+                scout_key = "|".join([
+                    "SCOUT", symbol, scout_direction,
+                    str(h4_state.get("event", "NONE")),
+                    str(h1_state.get("event", "NONE")),
+                ])
+                if scout_key not in sent:
+                    current_price = round(float(m15[-1]["close"]), 3 if "JPY" in symbol else 5)
+                    scout_msg = format_scout(
+                        symbol, h4_state, h1_state, current_price,
+                        m15[-1].get("time", "unknown"), reason,
+                    )
+                    if send_telegram_scout(scout_msg):
+                        sent[scout_key] = time.time()
+                        alerts += 1
+                        print(f"  SCOUT ALERT {scout_direction} TG=True")
+                    else:
+                        print(f"  SCOUT ALERT NOT CONFIRMED {scout_direction} TG=False")
+                else:
+                    print(f"  SCOUT DUPLICATE {scout_direction}")
+            else:
+                print(
+                    "  SCOUT SKIPPED — requires aligned directional H4/H1 bias "
+                    "and a confirmed BOS/CHoCH on H4 or H1"
+                )
+            if i < len(SYMBOLS):
+                time.sleep(8)
             continue
 
         fresh, age = setup_fresh(setup, m15)
