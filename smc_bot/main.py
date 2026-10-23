@@ -4,7 +4,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from config import M15_OUTPUTSIZE, SENT_TTL, SETUP_EXPIRY_CANDLES, SYMBOLS
-from modules.decision_engine import analyze_pair_diagnostic
+from modules.decision_engine import analyze_pair_diagnostic, _dealing_range
 from modules.notifier import (
     format_alert,
     format_scout,
@@ -161,16 +161,16 @@ def run():
             continue
 
         setup, reason = analyze_pair_diagnostic(h4, h1, m15, symbol)
-        # Print the same H4 dealing range used by the decision engine for auditability.
-        h4_range = h4[-20:]
-        if h4_range:
-            range_high = max(float(c["high"]) for c in h4_range)
-            range_low = min(float(c["low"]) for c in h4_range)
-            equilibrium = (range_high + range_low) / 2
+        # Print the exact confirmed-pivot range used by the decision engine.
+        dealing = _dealing_range(h4)
+        if dealing:
             print(
-                f"  H4 DEALING RANGE: low={range_low:.5f} high={range_high:.5f} "
-                f"EQ={equilibrium:.5f} | last H4 close={float(h4[-1]['close']):.5f}"
+                f"  H4 DEALING RANGE (decision range): low={dealing['low']:.5f} "
+                f"high={dealing['high']:.5f} EQ={dealing['equilibrium']:.5f} "
+                f"| last H4 close={float(h4[-1]['close']):.5f}"
             )
+        else:
+            print("  H4 DEALING RANGE: unavailable (no confirmed swing range)")
         if not setup:
             print(f"  NO TRADE — {reason}")
             continue
