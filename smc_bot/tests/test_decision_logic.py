@@ -41,6 +41,16 @@ class DecisionLogicTests(unittest.TestCase):
         self.assertEqual(_premium_discount(95, "BUY", h4)[0], "DISCOUNT")
         self.assertEqual(_premium_discount(105, "SELL", h4)[0], "PREMIUM")
 
+    def test_buy_at_equilibrium_is_not_a_discount_entry(self):
+        h4 = [candle(i, 110, 90) for i in range(20)]
+        location, _ = _premium_discount(100, "BUY", h4)
+        self.assertEqual(location, "EQUILIBRIUM")
+
+    def test_sell_at_equilibrium_is_not_a_premium_entry(self):
+        h4 = [candle(i, 110, 90) for i in range(20)]
+        location, _ = _premium_discount(100, "SELL", h4)
+        self.assertEqual(location, "EQUILIBRIUM")
+
     def test_jpy_pairs_keep_three_decimal_precision(self):
         self.assertEqual(_price_digits("EUR/JPY"), 3)
         self.assertEqual(_price_digits("USD/JPY"), 3)
