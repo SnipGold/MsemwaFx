@@ -181,8 +181,13 @@ def main():
     summaries = []
     for model, key in (("STRUCTURAL_SWING_STOP", "structural_net_r"),
                        ("TIGHT_SIX_BAR_STOP", "baseline_net_r")):
-        values = [{"net_r": float(x[key]), "comparison_entry_time": x["comparison_entry_time"]}
-                  for x in paired if x.get(key) not in ("", None)]
+        values = [
+            {
+                "net_r": float(x[key]) if x.get(key) not in ("", None) else None,
+                "comparison_entry_time": x.get("comparison_entry_time", ""),
+            }
+            for x in paired if x.get("comparison_entry_time")
+        ]
         summaries.append({"model": model, **summarize(values)})
     with open("stop_model_summary.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=list(summaries[0].keys())); w.writeheader(); w.writerows(summaries)
