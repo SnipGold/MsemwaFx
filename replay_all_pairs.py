@@ -115,7 +115,9 @@ def evaluate(m15,s):
         hit2=q["high"]>=s["tp2"] if s["direction"]=="BUY" else q["low"]<=s["tp2"]
         hit1=q["high"]>=s["tp1"] if s["direction"]=="BUY" else q["low"]<=s["tp1"]
         sl=q["low"]<=s["sl"] if s["direction"]=="BUY" else q["high"]>=s["sl"]
-        if sl and hit1:return "TP1_THEN_SL",k
+        # OHLC bars do not reveal which level was hit first within one candle.
+        # Treat simultaneous stop/target touches as ambiguous, not a win.
+        if sl and (hit1 or hit2):return "SAME_CANDLE_SL_TP_AMBIGUOUS",k
         if hit2:return "TP2",k
     return "OPEN",j
 
@@ -124,8 +126,8 @@ for code,symbol in PAIRS.items():
     try:
         m15=load(ROOT/f"{code}_15min.csv");h1=load(ROOT/f"{code}_1h.csv");h4=load(ROOT/f"{code}_4h.csv")
     except Exception as e:
-        summaries.append({"pair":symbol,"liquidity_events":0,"institutional_setups":0,"entries":0,"missed":0,"invalidated":0,"tp2_wins":0,"tp1_then_sl":0,"error":str(e)});continue
-    events=0; setups=0; entries=0; missed=0; invalidated=0; tp2=0; tpsl=0; last=-99
+        summaries.append({"pair":symbol,"liquidity_events":0,"institutional_setups":0,"entries":0,"missed":0,"invalidated":0,"tp2_wins":0,"tp1_then_sl":0,"same_candle_ambiguous":0,"error":str(e)});continue
+    events=0; setups=0; entries=0; missed=0; invalidated=0; tp2=0; tpsl=0; ambiguous=0; last=-99
     for i in range(40,len(m15)-20):
         s=find_candidate(m15,h1,h4,symbol,i)
         if not s or i-last<4:continue
@@ -133,13 +135,14 @@ for code,symbol in PAIRS.items():
         outcome,exit_i=evaluate(m15,s)
         if s["tier"] not in ("S_TIER","A_CONTINUATION","A_REVERSAL"):continue
         setups+=1
-        if outcome in ("TP2","TP1_THEN_SL","OPEN"):entries+=1
+        if outcome in ("TP2","TP1_THEN_SL","OPEN","SAME_CANDLE_SL_TP_AMBIGUOUS"):entries+=1
         if outcome=="MISSED":missed+=1
         elif outcome=="INVALIDATED":invalidated+=1
         elif outcome=="TP2":tp2+=1
         elif outcome=="TP1_THEN_SL":tpsl+=1
+        elif outcome=="SAME_CANDLE_SL_TP_AMBIGUOUS":ambiguous+=1
         all_results.append({k:v for k,v in s.items() if k not in ("signal_i","disp_i")}|{"outcome":outcome,"exit_time":"" if exit_i is None else m15[exit_i]["time"].isoformat()})
-    summaries.append({"pair":symbol,"liquidity_events":events,"institutional_setups":setups,"entries":entries,"missed":missed,"invalidated":invalidated,"tp2_wins":tp2,"tp1_then_sl":tpsl,"error":""})
+    summaries.append({"pair":symbol,"liquidity_events":events,"institutional_setups":setups,"entries":entries,"missed":missed,"invalidated":invalidated,"tp2_wins":tp2,"tp1_then_sl":tpsl,"same_candle_ambiguous":ambiguous,"error":""})
 
 with open(OUT,"w",newline="") as f:
     fields=list(all_results[0].keys()) if all_results else ["pair"];w=csv.DictWriter(f,fieldnames=fields);w.writeheader();w.writerows(all_results)
