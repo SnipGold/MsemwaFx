@@ -9,6 +9,7 @@ on:
       - "smc_bot/**"
       - "replay_all_pairs.py"
       - "replay_data/**"
+      - "scripts/**"
       - ".github/workflows/smc_bot.yml"
   schedule:
     - cron: "7,22,37,52 * * * *"
@@ -25,7 +26,7 @@ jobs:
   validate:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     permissions:
       contents: read
     steps:
@@ -49,13 +50,17 @@ jobs:
         run: python scripts/fetch_three_months.py
       - name: Run historical replay with patched structure detector
         run: python replay_all_pairs.py
-      - name: Upload replay results
+      - name: Compare structural and tighter stop models
+        run: python scripts/compare_stop_models.py
+      - name: Upload replay and stop comparison results
         uses: actions/upload-artifact@v4
         with:
           name: patched-structure-replay
           path: |
             replay_all_results.csv
             replay_all_summary.csv
+            stop_model_comparison.csv
+            stop_model_summary.csv
           if-no-files-found: error
 
   scan:
