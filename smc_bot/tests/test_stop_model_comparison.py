@@ -29,7 +29,7 @@ class StopModelComparisonTests(unittest.TestCase):
 
     def test_same_bar_stop_and_target_is_ambiguous(self):
         candles = [{"low": 8.0, "high": 12.0}]
-        outcome, _ = evaluate_stop(candles, 0, "BUY", 10, 9, 11, 12)
+        outcome, _ = evaluate_stop(candles, 0, "BUY", 9, 11, 12)
         self.assertEqual(outcome, "SAME_CANDLE_SL_TP_AMBIGUOUS")
 
     def test_realized_r_uses_half_at_tp1_half_at_tp2_and_cost(self):
