@@ -27,27 +27,14 @@ def atr(rows,i,n=14):
     return sum(vals)/len(vals)
 
 def bias(rows):
-    if len(rows)<12:return "NEUTRAL","NONE"
-    recent=rows[-24:]
-    hi=max(x["high"] for x in recent); lo=min(x["low"] for x in recent)
-    rng=max(hi-lo,1e-12); close=rows[-1]["close"]; pos=(close-lo)/rng
-    highs=[];lows=[]
-    for i in range(2,len(rows)-2):
-        if rows[i]["high"]>rows[i-1]["high"] and rows[i]["high"]>rows[i-2]["high"] and rows[i]["high"]>rows[i+1]["high"] and rows[i]["high"]>rows[i+2]["high"]: highs.append(rows[i]["high"])
-        if rows[i]["low"]<rows[i-1]["low"] and rows[i]["low"]<rows[i-2]["low"] and rows[i]["low"]<rows[i+1]["low"] and rows[i]["low"]<rows[i+2]["low"]: lows.append(rows[i]["low"])
-    score=(1 if len(highs)>=2 and highs[-1]>highs[-2] else -1 if len(highs)>=2 and highs[-1]<highs[-2] else 0)
-    score+=(1 if len(lows)>=2 and lows[-1]>lows[-2] else -1 if len(lows)>=2 and lows[-1]<lows[-2] else 0)
-    momentum=close-rows[-1-min(6,len(rows)-1)]["close"]
-    threshold=rng*.08
-    if highs and close>highs[-1]: return "BULLISH","BOS"
-    if lows and close<lows[-1]: return "BEARISH","BOS"
-    if score>=2:return "BULLISH","CHoCH" if momentum<0 else "NONE"
-    if score<=-2:return "BEARISH","CHoCH" if momentum>0 else "NONE"
-    if score==1 and (momentum>threshold or pos>.58):return "BULLISH","CHoCH" if momentum>threshold else "NONE"
-    if score==-1 and (momentum<-threshold or pos<.42):return "BEARISH","CHoCH" if momentum<-threshold else "NONE"
-    if pos>.62 and momentum>threshold:return "BULLISH","NONE"
-    if pos<.38 and momentum<-threshold:return "BEARISH","NONE"
-    return "NEUTRAL","NONE"
+    """Use the same patched structure detector as the live bot."""
+    import sys
+    bot_root = str(Path("smc_bot"))
+    if bot_root not in sys.path:
+        sys.path.insert(0, bot_root)
+    from modules.structure import analyze_structure
+    result = analyze_structure(rows)
+    return result.get("bias", "NEUTRAL"), result.get("event", "NONE")
 
 def closed(rows,t,hours):
     return [x for x in rows if x["time"]+timedelta(hours=hours)<=t]
@@ -57,6 +44,21 @@ def state(h1,h4,t):
 
 def pip(symbol):
     return .01 if "JPY" in symbol else .0001
+
+def confirmed_swing(candles, end_index, direction, lookback=60, span=2):
+    """Latest pivot confirmed by end_index; never inspect candles after signal time."""
+    start=max(span,end_index-lookback)
+    last_pivot=end_index-span
+    pivots=[]
+    for p in range(start,last_pivot+1):
+        value=candles[p]["low"] if direction=="BUY" else candles[p]["high"]
+        neighbors=range(p-span,p+span+1)
+        if direction=="BUY":
+            ok=all(value<=candles[j]["low"] for j in neighbors if j!=p)
+        else:
+            ok=all(value>=candles[j]["high"] for j in neighbors if j!=p)
+        if ok:pivots.append((p,value))
+    return pivots[-1][1] if pivots else None
 
 def find_candidate(m15,h1,h4,symbol,i):
     if i<40 or m15[i]["time"].weekday()>=5:return None
@@ -80,8 +82,14 @@ def find_candidate(m15,h1,h4,symbol,i):
         if direction=="SELL" and q["close"]>q["open"]:ob=j;break
     if ob is None:return None
     zl,zh=m15[ob]["low"],m15[ob]["high"]; entry=(zl+zh)/2
-    sweep_ext=m15[i]["low"] if direction=="BUY" else m15[i]["high"]
-    sl=sweep_ext-a*.15 if direction=="BUY" else sweep_ext+a*.15
+    # Match live structural stop policy: beyond the latest confirmed swing,
+    # also respecting the order-block edge, with an ATR buffer.
+    swing=confirmed_swing(m15,i,direction)
+    if swing is None:return None
+    if direction=="BUY":
+        sl=min(zl,swing)-a
+    else:
+        sl=max(zh,swing)+a
     risk=abs(entry-sl); ps=pip(symbol)
     if risk<=0:return None
     spread_pips={"EUR/USD":1.4,"EUR/JPY":1.3,"GBP/USD":1.6,"AUD/USD":1.6,"USD/CHF":1.5,"USD/CAD":1.9,"NZD/USD":1.8,"USD/JPY":1.5}.get(symbol,1.5)
@@ -123,22 +131,27 @@ def evaluate(m15,s):
         if (s["direction"]=="BUY" and r["low"]<=s["sl"]) or (s["direction"]=="SELL" and r["high"]>=s["sl"]):return "INVALIDATED",j
         if r["low"]<=s["entry"]<=r["high"]:break
     else:return "MISSED",min(s["disp_i"]+16,len(m15)-1)
+    tp1_hit=False
     for k in range(j,min(j+49,len(m15))):
         q=m15[k]
         hit2=q["high"]>=s["tp2"] if s["direction"]=="BUY" else q["low"]<=s["tp2"]
         hit1=q["high"]>=s["tp1"] if s["direction"]=="BUY" else q["low"]<=s["tp1"]
         sl=q["low"]<=s["sl"] if s["direction"]=="BUY" else q["high"]>=s["sl"]
-        if sl and hit1:return "TP1_THEN_SL",k
+        # OHLC bars do not reveal which level was hit first within one candle.
+        # Treat simultaneous stop/target touches as ambiguous, never as a win.
+        if sl and (hit1 or hit2):return "SAME_CANDLE_SL_TP_AMBIGUOUS",k
+        if sl:return ("TP1_THEN_SL" if tp1_hit else "SL"),k
         if hit2:return "TP2",k
-    return "OPEN",j
+        if hit1:tp1_hit=True
+    return ("TP1_OPEN" if tp1_hit else "OPEN"),min(j+48,len(m15)-1)
 
 all_results=[]; summaries=[]
 for code,symbol in PAIRS.items():
     try:
         m15=load(ROOT/f"{code}_15min.csv");h1=load(ROOT/f"{code}_1h.csv");h4=load(ROOT/f"{code}_4h.csv")
     except Exception as e:
-        summaries.append({"pair":symbol,"liquidity_events":0,"institutional_setups":0,"entries":0,"missed":0,"invalidated":0,"tp2_wins":0,"tp1_then_sl":0,"error":str(e)});continue
-    events=0; setups=0; entries=0; missed=0; invalidated=0; tp2=0; tpsl=0; last=-99
+        summaries.append({"pair":symbol,"liquidity_events":0,"institutional_setups":0,"entries":0,"missed":0,"invalidated":0,"tp2_wins":0,"tp1_then_sl":0,"same_candle_ambiguous":0,"error":str(e)});continue
+    events=0; setups=0; entries=0; missed=0; invalidated=0; tp2=0; tpsl=0; ambiguous=0; sl=0; tp1_open=0; opened=0; last=-99
     for i in range(40,len(m15)-20):
         s=find_candidate(m15,h1,h4,symbol,i)
         if not s or i-last<4:continue
@@ -146,13 +159,17 @@ for code,symbol in PAIRS.items():
         outcome,exit_i=evaluate(m15,s)
         if s["tier"] not in ("S_TIER","A_CONTINUATION","A_REVERSAL"):continue
         setups+=1
-        if outcome in ("TP2","TP1_THEN_SL","OPEN"):entries+=1
+        if outcome not in ("MISSED","INVALIDATED"):entries+=1
         if outcome=="MISSED":missed+=1
         elif outcome=="INVALIDATED":invalidated+=1
         elif outcome=="TP2":tp2+=1
         elif outcome=="TP1_THEN_SL":tpsl+=1
+        elif outcome=="SL":sl+=1
+        elif outcome=="TP1_OPEN":tp1_open+=1
+        elif outcome=="OPEN":opened+=1
+        elif outcome=="SAME_CANDLE_SL_TP_AMBIGUOUS":ambiguous+=1
         all_results.append({k:v for k,v in s.items() if k not in ("signal_i","disp_i")}|{"outcome":outcome,"exit_time":"" if exit_i is None else m15[exit_i]["time"].isoformat()})
-    summaries.append({"pair":symbol,"liquidity_events":events,"institutional_setups":setups,"entries":entries,"missed":missed,"invalidated":invalidated,"tp2_wins":tp2,"tp1_then_sl":tpsl,"error":""})
+    summaries.append({"pair":symbol,"liquidity_events":events,"institutional_setups":setups,"entries":entries,"missed":missed,"invalidated":invalidated,"tp2_wins":tp2,"tp1_then_sl":tpsl,"sl_before_tp1":sl,"tp1_open":tp1_open,"open_no_tp1":opened,"same_candle_ambiguous":ambiguous,"error":""})
 
 with open(OUT,"w",newline="") as f:
     fields=list(all_results[0].keys()) if all_results else ["pair"];w=csv.DictWriter(f,fieldnames=fields);w.writeheader();w.writerows(all_results)

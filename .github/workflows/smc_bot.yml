@@ -7,13 +7,17 @@ on:
   pull_request:
     paths:
       - "smc_bot/**"
+      - "replay_all_pairs.py"
+      - "replay_data/**"
+      - "scripts/**"
       - ".github/workflows/smc_bot.yml"
   schedule:
     - cron: "7,22,37,52 * * * *"
   workflow_dispatch:
 
 concurrency:
-  group: msemwafx-smc-live
+  # Keep PR backtests separate from the scheduled scanner on main.
+  group: msemwafx-smc-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -23,7 +27,7 @@ jobs:
   validate:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
     permissions:
       contents: read
     steps:
@@ -41,6 +45,24 @@ jobs:
       - name: Run unit tests
         working-directory: smc_bot
         run: python -m unittest discover -s tests -v
+      - name: Download at least 90 days of OHLC history
+        env:
+          TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
+        run: python scripts/fetch_three_months.py
+      - name: Run historical replay with patched structure detector
+        run: python replay_all_pairs.py
+      - name: Compare structural and tighter stop models
+        run: python scripts/compare_stop_models.py
+      - name: Upload replay and stop comparison results
+        uses: actions/upload-artifact@v4
+        with:
+          name: patched-structure-replay
+          path: |
+            replay_all_results.csv
+            replay_all_summary.csv
+            stop_model_comparison.csv
+            stop_model_summary.csv
+          if-no-files-found: error
 
   scan:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'

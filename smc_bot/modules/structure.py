@@ -73,31 +73,33 @@ def analyze_structure(candles):
 
     position = (close - range_low) / range_size
 
+    # A BOS/CHoCH must be an actual close beyond a confirmed swing.
+    # Momentum alone must never create a structural event.
     if bullish_break and not bearish_break:
         bias = "BULLISH"
-        event = "BOS"
+        event = "CHoCH" if structural_score < 0 else "BOS"
     elif bearish_break and not bullish_break:
         bias = "BEARISH"
-        event = "BOS"
+        event = "CHoCH" if structural_score > 0 else "BOS"
     elif structural_score >= 2:
         bias = "BULLISH"
-        event = "CHoCH" if momentum < 0 else "NONE"
+        event = "NONE"
     elif structural_score <= -2:
         bias = "BEARISH"
-        event = "CHoCH" if momentum > 0 else "NONE"
+        event = "NONE"
     elif structural_score == 1:
         # One-sided structure plus supportive momentum keeps the HTF bias
         # during an ordinary pullback instead of flipping to NEUTRAL.
         if momentum > momentum_threshold or position > 0.58:
             bias = "BULLISH"
-            event = "CHoCH" if momentum > momentum_threshold else "NONE"
+            event = "NONE"
         else:
             bias = "NEUTRAL"
             event = "NONE"
     elif structural_score == -1:
         if momentum < -momentum_threshold or position < 0.42:
             bias = "BEARISH"
-            event = "CHoCH" if momentum < -momentum_threshold else "NONE"
+            event = "NONE"
         else:
             bias = "NEUTRAL"
             event = "NONE"

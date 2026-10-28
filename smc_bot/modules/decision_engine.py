@@ -156,6 +156,29 @@ def _price_digits(symbol):
     return 3 if symbol and "JPY" in symbol else 5
 
 
+def _confirmed_swing_before(candles, end_index, direction, lookback=60, span=2):
+    """Return the latest confirmed M15 swing low/high known by the signal candle.
+
+    A pivot is only usable when its right-side confirmation candles have closed
+    by end_index. This prevents using future candles to place a historical stop.
+    """
+    if not isinstance(candles, (list, tuple)) or end_index >= len(candles):
+        return None
+    start = max(span, end_index - lookback)
+    last_pivot_index = end_index - span
+    pivots = []
+    for i in range(start, last_pivot_index + 1):
+        value = float(candles[i]["low"] if direction == "BUY" else candles[i]["high"])
+        neighbors = range(i - span, i + span + 1)
+        if direction == "BUY":
+            is_pivot = all(value <= float(candles[j]["low"]) for j in neighbors if j != i)
+        else:
+            is_pivot = all(value >= float(candles[j]["high"]) for j in neighbors if j != i)
+        if is_pivot:
+            pivots.append((i, value))
+    return pivots[-1][1] if pivots else None
+
+
 def _premium_discount(entry, direction, h4_candles):
     """Classify entry location against the recent H4 range, not noisy M15 range."""
     dealing = _dealing_range(h4_candles)
@@ -197,13 +220,16 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
     if atr <= 0:
         return None, "NO M15 ATR"
 
-    # Structural SL uses the OB boundary plus recent swing context, not a liquidity sweep.
-    lookback = m15_candles[max(0, signal_index - 5):signal_index + 1]
+    # Place SL beyond the latest confirmed structural swing known at signal time.
+    # The OB edge is an additional constraint; it must not replace the swing.
+    swing = _confirmed_swing_before(m15_candles, signal_index, direction)
+    if swing is None:
+        return None, f"NO CONFIRMED M15 SWING {'LOW' if direction == 'BUY' else 'HIGH'} FOR STRUCTURAL SL"
     if direction == "BUY":
-        structural_low = min([zone_low] + [float(c["low"]) for c in lookback])
+        structural_low = min(zone_low, swing)
         sl = round(structural_low - atr * MIN_ATR_SL_MULTIPLIER, digits)
     else:
-        structural_high = max([zone_high] + [float(c["high"]) for c in lookback])
+        structural_high = max(zone_high, swing)
         sl = round(structural_high + atr * MIN_ATR_SL_MULTIPLIER, digits)
 
     risk = abs(entry - sl)
