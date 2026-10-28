@@ -1,6 +1,6 @@
 import math
 import unittest
-from modules.decision_engine import _structure_confirmed
+from modules.decision_engine import _confirmed_swing_before, _structure_confirmed
 from modules.structure import analyze_structure
 
 
@@ -59,6 +59,31 @@ class StructureConfirmationTests(unittest.TestCase):
                 (result["bias"] == "BULLISH" and close > result["last_swing_high"])
                 or (result["bias"] == "BEARISH" and close < result["last_swing_low"])
             )
+
+    def test_buy_stop_uses_latest_confirmed_swing_low(self):
+        candles = []
+        lows = [10, 9, 8, 9, 10, 9, 7, 8, 9, 10]
+        for i, low in enumerate(lows):
+            candles.append({"low": low, "high": low + 2, "close": low + 1})
+        # At index 8, the pivot low at index 6 is confirmed by candles 7 and 8.
+        self.assertEqual(_confirmed_swing_before(candles, 8, "BUY", lookback=8), 7.0)
+
+    def test_sell_stop_uses_latest_confirmed_swing_high(self):
+        candles = []
+        highs = [12, 13, 14, 13, 12, 13, 15, 14, 13, 12]
+        for high in highs:
+            candles.append({"low": high - 2, "high": high, "close": high - 1})
+        # At index 8, the pivot high at index 6 is confirmed by candles 7 and 8.
+        self.assertEqual(_confirmed_swing_before(candles, 8, "SELL", lookback=8), 15.0)
+
+    def test_swing_must_be_confirmed_before_signal_index(self):
+        candles = [
+            {"low": low, "high": low + 2, "close": low + 1}
+            for low in [10, 9, 8, 9, 10, 9, 7, 8]
+        ]
+        # At index 7, the low at index 6 has only one right-side candle;
+        # it must not be used as a confirmed pivot with span=2.
+        self.assertNotEqual(_confirmed_swing_before(candles, 7, "BUY", lookback=8), 7.0)
 
     def test_bos_on_either_aligned_htf_is_accepted(self):
         self.assertTrue(_structure_confirmed({"event": "BOS"}, {"event": "NONE"}))
