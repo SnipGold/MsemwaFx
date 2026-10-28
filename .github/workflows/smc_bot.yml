@@ -7,6 +7,8 @@ on:
   pull_request:
     paths:
       - "smc_bot/**"
+      - "replay_all_pairs.py"
+      - "replay_data/**"
       - ".github/workflows/smc_bot.yml"
   schedule:
     - cron: "7,22,37,52 * * * *"
@@ -41,6 +43,16 @@ jobs:
       - name: Run unit tests
         working-directory: smc_bot
         run: python -m unittest discover -s tests -v
+      - name: Run historical replay with patched structure detector
+        run: python replay_all_pairs.py
+      - name: Upload replay results
+        uses: actions/upload-artifact@v4
+        with:
+          name: patched-structure-replay
+          path: |
+            replay_all_results.csv
+            replay_all_summary.csv
+          if-no-files-found: error
 
   scan:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
