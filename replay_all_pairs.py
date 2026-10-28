@@ -45,6 +45,21 @@ def state(h1,h4,t):
 def pip(symbol):
     return .01 if "JPY" in symbol else .0001
 
+def confirmed_swing(candles, end_index, direction, lookback=60, span=2):
+    """Latest pivot confirmed by end_index; never inspect candles after signal time."""
+    start=max(span,end_index-lookback)
+    last_pivot=end_index-span
+    pivots=[]
+    for p in range(start,last_pivot+1):
+        value=candles[p]["low"] if direction=="BUY" else candles[p]["high"]
+        neighbors=range(p-span,p+span+1)
+        if direction=="BUY":
+            ok=all(value<=candles[j]["low"] for j in neighbors if j!=p)
+        else:
+            ok=all(value>=candles[j]["high"] for j in neighbors if j!=p)
+        if ok:pivots.append((p,value))
+    return pivots[-1][1] if pivots else None
+
 def find_candidate(m15,h1,h4,symbol,i):
     if i<40 or m15[i]["time"].weekday()>=5:return None
     t=m15[i]["time"]; h4b,h4e,h1b,h1e=state(h1,h4,t)
@@ -67,8 +82,14 @@ def find_candidate(m15,h1,h4,symbol,i):
         if direction=="SELL" and q["close"]>q["open"]:ob=j;break
     if ob is None:return None
     zl,zh=m15[ob]["low"],m15[ob]["high"]; entry=(zl+zh)/2
-    sweep_ext=m15[i]["low"] if direction=="BUY" else m15[i]["high"]
-    sl=sweep_ext-a*.15 if direction=="BUY" else sweep_ext+a*.15
+    # Match live structural stop policy: beyond the latest confirmed swing,
+    # also respecting the order-block edge, with an ATR buffer.
+    swing=confirmed_swing(m15,i,direction)
+    if swing is None:return None
+    if direction=="BUY":
+        sl=min(zl,swing)-a
+    else:
+        sl=max(zh,swing)+a
     risk=abs(entry-sl); ps=pip(symbol)
     if risk<=0:return None
     spread_pips={"EUR/USD":1.4,"EUR/JPY":1.3,"GBP/USD":1.6,"AUD/USD":1.6,"USD/CHF":1.5,"USD/CAD":1.9,"NZD/USD":1.8,"USD/JPY":1.5}.get(symbol,1.5)
