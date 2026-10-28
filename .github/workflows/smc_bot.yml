@@ -16,7 +16,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: msemwafx-smc-live
+  # Keep PR backtests separate from the scheduled scanner on main.
+  group: msemwafx-smc-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
   cancel-in-progress: false
 
 permissions:
