@@ -27,27 +27,14 @@ def atr(rows,i,n=14):
     return sum(vals)/len(vals)
 
 def bias(rows):
-    if len(rows)<12:return "NEUTRAL","NONE"
-    recent=rows[-24:]
-    hi=max(x["high"] for x in recent); lo=min(x["low"] for x in recent)
-    rng=max(hi-lo,1e-12); close=rows[-1]["close"]; pos=(close-lo)/rng
-    highs=[];lows=[]
-    for i in range(2,len(rows)-2):
-        if rows[i]["high"]>rows[i-1]["high"] and rows[i]["high"]>rows[i-2]["high"] and rows[i]["high"]>rows[i+1]["high"] and rows[i]["high"]>rows[i+2]["high"]: highs.append(rows[i]["high"])
-        if rows[i]["low"]<rows[i-1]["low"] and rows[i]["low"]<rows[i-2]["low"] and rows[i]["low"]<rows[i+1]["low"] and rows[i]["low"]<rows[i+2]["low"]: lows.append(rows[i]["low"])
-    score=(1 if len(highs)>=2 and highs[-1]>highs[-2] else -1 if len(highs)>=2 and highs[-1]<highs[-2] else 0)
-    score+=(1 if len(lows)>=2 and lows[-1]>lows[-2] else -1 if len(lows)>=2 and lows[-1]<lows[-2] else 0)
-    momentum=close-rows[-1-min(6,len(rows)-1)]["close"]
-    threshold=rng*.08
-    if highs and close>highs[-1]: return "BULLISH","BOS"
-    if lows and close<lows[-1]: return "BEARISH","BOS"
-    if score>=2:return "BULLISH","CHoCH" if momentum<0 else "NONE"
-    if score<=-2:return "BEARISH","CHoCH" if momentum>0 else "NONE"
-    if score==1 and (momentum>threshold or pos>.58):return "BULLISH","CHoCH" if momentum>threshold else "NONE"
-    if score==-1 and (momentum<-threshold or pos<.42):return "BEARISH","CHoCH" if momentum<-threshold else "NONE"
-    if pos>.62 and momentum>threshold:return "BULLISH","NONE"
-    if pos<.38 and momentum<-threshold:return "BEARISH","NONE"
-    return "NEUTRAL","NONE"
+    """Use the same patched structure detector as the live bot."""
+    import sys
+    bot_root = str(Path("smc_bot"))
+    if bot_root not in sys.path:
+        sys.path.insert(0, bot_root)
+    from modules.structure import analyze_structure
+    result = analyze_structure(rows)
+    return result.get("bias", "NEUTRAL"), result.get("event", "NONE")
 
 def closed(rows,t,hours):
     return [x for x in rows if x["time"]+timedelta(hours=hours)<=t]
