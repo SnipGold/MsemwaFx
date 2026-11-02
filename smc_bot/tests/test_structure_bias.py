@@ -19,7 +19,7 @@ def trend_candles(highs, lows, final_close):
 
 class StructureBiasTests(unittest.TestCase):
     def test_bearish_structure_stays_bearish_during_bullish_recovery(self):
-        candles = trend_candles([110, 108, 106, 104], [100, 98, 96, 94], 103.0)
+        candles = trend_candles([110, 108, 106, 104], [100, 98, 96, 94], 103.8)
         result = analyze_structure(candles)
         self.assertEqual(result["trend_structure"], "BEARISH")
         self.assertEqual(result["bias"], "BEARISH")
@@ -33,7 +33,7 @@ class StructureBiasTests(unittest.TestCase):
         self.assertEqual(result["phase"], "BULLISH_REVERSAL_PENDING")
 
     def test_bullish_structure_survives_a_normal_pullback(self):
-        candles = trend_candles([104, 106, 108, 110], [90, 92, 94, 96], 109.0)
+        candles = trend_candles([104, 106, 108, 110], [90, 92, 94, 96], 108.5)
         result = analyze_structure(candles)
         self.assertEqual(result["trend_structure"], "BULLISH")
         self.assertEqual(result["bias"], "BULLISH")
