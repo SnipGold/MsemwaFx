@@ -239,7 +239,7 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
     swing_reference, sl_basis, swing_price = _confirmed_swing_reference(
         m15_candles, signal_index, direction, entry, zone_low, zone_high
     )
-    sl_buffer = max(atr * 0.10, spread_price_buffer := _reference_spread_price(symbol) * MIN_SPREAD_MULTIPLIER)
+    sl_buffer = max(atr * 0.10, _reference_spread_price(symbol) * MIN_SPREAD_MULTIPLIER)
     if direction == "BUY":
         sl = round(swing_reference - sl_buffer, digits)
     else:
