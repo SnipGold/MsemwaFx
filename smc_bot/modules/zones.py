@@ -26,7 +26,10 @@ def _chronological(candles):
             return rows
         try:
             value = str(candle["time"]).replace("Z", "+00:00")
-            parsed = datetime.fromisoformat(value)\n            if parsed.tzinfo is None:\n                parsed = parsed.replace(tzinfo=timezone.utc)\n            dated.append((parsed, candle))
+            parsed = datetime.fromisoformat(value)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            dated.append((parsed, candle))
         except (TypeError, ValueError):
             return rows
     return [c for _, c in sorted(dated, key=lambda item: item[0])]
