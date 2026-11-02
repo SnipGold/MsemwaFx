@@ -196,17 +196,13 @@ def _confirmed_swing_reference(candles, end_index, direction, entry, zone_low, z
         if relevant:
             index, swing = relevant[-1]
             return min(float(zone_low), swing), f"CONFIRMED_SWING_LOW@{index}", swing
-        fallback = candles[max(0, end_index - 11):end_index + 1]
-        swing = min(float(c["low"]) for c in fallback)
-        return min(float(zone_low), swing), "LOCAL_LOW_FALLBACK", swing
+        return None, "NO_CONFIRMED_SWING_LOW", None
 
     relevant = [item for item in highs if item[1] > entry]
     if relevant:
         index, swing = relevant[-1]
         return max(float(zone_high), swing), f"CONFIRMED_SWING_HIGH@{index}", swing
-    fallback = candles[max(0, end_index - 11):end_index + 1]
-    swing = max(float(c["high"]) for c in fallback)
-    return max(float(zone_high), swing), "LOCAL_HIGH_FALLBACK", swing
+    return None, "NO_CONFIRMED_SWING_HIGH", None
 
 
 def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, symbol):
@@ -239,6 +235,8 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
     swing_reference, sl_basis, swing_price = _confirmed_swing_reference(
         m15_candles, signal_index, direction, entry, zone_low, zone_high
     )
+    if swing_reference is None:
+        return None, f"NO CONFIRMED STRUCTURAL SWING FOR SL ({sl_basis})"
     sl_buffer = max(atr * 0.10, _reference_spread_price(symbol) * MIN_SPREAD_MULTIPLIER)
     if direction == "BUY":
         sl = round(swing_reference - sl_buffer, digits)
