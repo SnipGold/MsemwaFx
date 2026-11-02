@@ -5,7 +5,7 @@ when ISO timestamps are available. A support level must be fully below the
 latest close; a resistance level must be fully above it. Zones containing the
 current price remain zones, but are not mislabeled as support/resistance.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from math import isfinite
 
 
@@ -26,7 +26,7 @@ def _chronological(candles):
             return rows
         try:
             value = str(candle["time"]).replace("Z", "+00:00")
-            dated.append((datetime.fromisoformat(value), candle))
+            parsed = datetime.fromisoformat(value)\n            if parsed.tzinfo is None:\n                parsed = parsed.replace(tzinfo=timezone.utc)\n            dated.append((parsed, candle))
         except (TypeError, ValueError):
             return rows
     return [c for _, c in sorted(dated, key=lambda item: item[0])]
