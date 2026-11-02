@@ -77,6 +77,7 @@ def format_alert(symbol, setup, candle_time, current_price, entry_status, instru
         f"*Instruction:* {instruction}\n"
         f"⏳ *Expiry:* {setup['expiry_time']}\n\n"
         f"🛑 *Stop Loss:* {setup['sl']}\n"
+        f"*SL Basis:* {setup.get('sl_basis', 'Not recorded')} ({setup.get('sl_swing', 'N/A')})\n"
         f"📏 *Risk:* {setup['risk_pips']} pips\n"
         f"📦 *Lot Size:* {setup['lot_size']:.2f}\n"
         f"🎯 *TP1:* {setup['tp1']}\n"

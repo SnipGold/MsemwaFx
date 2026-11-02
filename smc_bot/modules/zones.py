@@ -1,9 +1,11 @@
-"""Demand/supply zones and key levels from OHLC candles.
+"""Demand/supply zones and directionally valid key levels from OHLC candles.
 
-Pure Python; no pandas dependency. Zones are based on confirmed pivot candles,
-merged when nearby, and invalidated by a later close through the distal edge.
-This is a context/validation module, not a standalone trade-entry signal.
+Pure Python; no pandas dependency. Input is normalized to chronological order
+when ISO timestamps are available. A support level must be fully below the
+latest close; a resistance level must be fully above it. Zones containing the
+current price remain zones, but are not mislabeled as support/resistance.
 """
+from datetime import datetime, timezone
 from math import isfinite
 
 
@@ -13,6 +15,24 @@ def _valid(c):
     except (KeyError, TypeError, ValueError):
         return False
     return all(isfinite(x) for x in (o, h, l, cl)) and h >= max(o, cl, l) and l <= min(o, cl, h)
+
+
+def _chronological(candles):
+    """Sort ISO-dated candles oldest-to-newest when every row has a valid time."""
+    rows = list(candles)
+    dated = []
+    for candle in rows:
+        if not isinstance(candle, dict) or not candle.get("time"):
+            return rows
+        try:
+            value = str(candle["time"]).replace("Z", "+00:00")
+            parsed = datetime.fromisoformat(value)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            dated.append((parsed, candle))
+        except (TypeError, ValueError):
+            return rows
+    return [c for _, c in sorted(dated, key=lambda item: item[0])]
 
 
 def _atr(candles, period=14):
@@ -37,16 +57,28 @@ def _pivot(candles, i, span, kind):
     return all(value <= float(candles[j]["low"]) for j in range(i-span, i+span+1) if j != i)
 
 
-def analyze_zones(candles, lookback=160, pivot_span=3, merge_atr=0.25, max_zones=3):
-    """Return active demand/supply zones and nearest key levels.
+def _directional_key_levels(demand, supply, last_close):
+    """Never return support above price or resistance below price."""
+    below = [z for z in demand if float(z["high"]) <= last_close]
+    above = [z for z in supply if float(z["low"]) >= last_close]
+    support = max((float(z["high"]) for z in below), default=None)
+    resistance = min((float(z["low"]) for z in above), default=None)
+    return (
+        round(support, 6) if support is not None else None,
+        round(resistance, 6) if resistance is not None else None,
+    )
 
-    Input candles must be chronological OHLC dictionaries. A pivot is only
-    considered after pivot_span candles have formed to its right, avoiding
-    look-ahead in a live scan. Invalid input rows are skipped.
+
+def analyze_zones(candles, lookback=160, pivot_span=3, merge_atr=0.25, max_zones=3):
+    """Return active demand/supply zones and correctly sided key levels.
+
+    A pivot is only considered after pivot_span candles have formed to its
+    right, avoiding look-ahead in a live scan. Invalid input rows are skipped.
     """
     if not isinstance(candles, (list, tuple)) or pivot_span < 1 or max_zones < 1:
         return {"demand": [], "supply": [], "support": None, "resistance": None, "atr": 0.0}
-    data = [c for c in candles[-lookback:] if isinstance(c, dict) and _valid(c)]
+    ordered = _chronological(candles)
+    data = [c for c in ordered[-lookback:] if isinstance(c, dict) and _valid(c)]
     if len(data) < max(2 * pivot_span + 3, 15):
         return {"demand": [], "supply": [], "support": None, "resistance": None, "atr": _atr(data)}
     atr = _atr(data)
@@ -64,9 +96,12 @@ def analyze_zones(candles, lookback=160, pivot_span=3, merge_atr=0.25, max_zones
                 low, high = l, min(o, cl)
             else:
                 low, high = max(o, cl), h
-            # Any later close through the far edge invalidates the zone.
             later = data[i + 1:]
-            broken = any(float(x["close"]) < low for x in later) if kind == "demand" else any(float(x["close"]) > high for x in later)
+            broken = (
+                any(float(x["close"]) < low for x in later)
+                if kind == "demand"
+                else any(float(x["close"]) > high for x in later)
+            )
             if broken:
                 continue
             touches = sum(
@@ -80,7 +115,6 @@ def analyze_zones(candles, lookback=160, pivot_span=3, merge_atr=0.25, max_zones
                 "fresh": touches == 0, "strength": max(1, 3 - min(touches, 2)),
             })
 
-    # Merge overlapping/nearby zones; preserve freshest origin and accumulate touches.
     for kind in ("demand", "supply"):
         merged = []
         for z in sorted(found[kind], key=lambda x: x["low"]):
@@ -96,19 +130,23 @@ def analyze_zones(candles, lookback=160, pivot_span=3, merge_atr=0.25, max_zones
                 match["fresh"] = match["touches"] == 0
                 match["strength"] = max(1, 3 - min(match["touches"], 2))
                 match["origin_index"] = max(match["origin_index"], z["origin_index"])
+
         if kind == "demand":
             valid = [z for z in merged if z["low"] <= last_close]
             valid.sort(key=lambda z: (abs(last_close - z["high"]), z["touches"], z["age_candles"]))
         else:
             valid = [z for z in merged if z["high"] >= last_close]
             valid.sort(key=lambda z: (abs(z["low"] - last_close), z["touches"], z["age_candles"]))
-        found[kind] = valid[:max_zones]
+        found[kind] = valid
 
-    support = max((z["high"] for z in found["demand"]), default=None)
-    resistance = min((z["low"] for z in found["supply"]), default=None)
+    support, resistance = _directional_key_levels(
+        found["demand"], found["supply"], last_close
+    )
     return {
-        "demand": found["demand"], "supply": found["supply"],
-        "support": round(support, 6) if support is not None else None,
-        "resistance": round(resistance, 6) if resistance is not None else None,
+        "demand": found["demand"][:max_zones],
+        "supply": found["supply"][:max_zones],
+        "support": support,
+        "resistance": resistance,
+        "current_price": round(last_close, 6),
         "atr": round(atr, 6),
     }

@@ -1,24 +1,23 @@
 def _swing_high(c, i):
     return (
-        c[i]["high"] > c[i - 1]["high"]
-        and c[i]["high"] > c[i - 2]["high"]
-        and c[i]["high"] > c[i + 1]["high"]
-        and c[i]["high"] > c[i + 2]["high"]
+        float(c[i]["high"]) > float(c[i - 1]["high"])
+        and float(c[i]["high"]) > float(c[i - 2]["high"])
+        and float(c[i]["high"]) > float(c[i + 1]["high"])
+        and float(c[i]["high"]) > float(c[i + 2]["high"])
     )
 
 
 def _swing_low(c, i):
     return (
-        c[i]["low"] < c[i - 1]["low"]
-        and c[i]["low"] < c[i - 2]["low"]
-        and c[i]["low"] < c[i + 1]["low"]
-        and c[i]["low"] < c[i + 2]["low"]
+        float(c[i]["low"]) < float(c[i - 1]["low"])
+        and float(c[i]["low"]) < float(c[i - 2]["low"])
+        and float(c[i]["low"]) < float(c[i + 1]["low"])
+        and float(c[i]["low"]) < float(c[i + 2]["low"])
     )
 
 
 def _swings(candles):
-    highs = []
-    lows = []
+    highs, lows = [], []
     for i in range(2, len(candles) - 2):
         if _swing_high(candles, i):
             highs.append((i, float(candles[i]["high"])))
@@ -27,100 +26,109 @@ def _swings(candles):
     return highs, lows
 
 
-def analyze_structure(candles):
-    """Return a more robust HTF structure bias.
+def _atr(candles, period=14):
+    if len(candles) < 2:
+        return 0.0
+    tr = []
+    for i in range(1, len(candles)):
+        current, previous = candles[i], candles[i - 1]
+        tr.append(max(
+            float(current["high"]) - float(current["low"]),
+            abs(float(current["high"]) - float(previous["close"])),
+            abs(float(current["low"]) - float(previous["close"])),
+        ))
+    sample = tr[-period:]
+    return sum(sample) / len(sample) if sample else 0.0
 
-    The old detector required the last two swing highs AND lows to make a
-    perfect HH/HL or LH/LL sequence. That made strong trends look NEUTRAL
-    during normal pullbacks. This version combines structural progression,
-    confirmed breaks and recent momentum, while remaining conservative.
+
+def analyze_structure(candles, lookback=60, break_atr_buffer=0.05):
+    """Classify confirmed swing structure; momentum alone never flips HTF bias.
+
+    A counter-trend rally inside a lower-high/lower-low sequence remains
+    BEARISH until a confirmed close breaks the latest protected swing high.
+    That first counter-trend break is labelled CHoCH and remains NEUTRAL
+    (transition pending) until a new HH/HL sequence is established. The
+    inverse rule applies to bullish structure.
     """
-    if len(candles) < 12:
-        return {"bias": "NEUTRAL", "event": "NONE"}
+    if not isinstance(candles, (list, tuple)) or len(candles) < 12:
+        return {
+            "bias": "NEUTRAL", "event": "NONE", "phase": "INSUFFICIENT_DATA",
+            "structural_score": 0, "momentum": 0.0,
+            "last_swing_high": None, "last_swing_low": None,
+        }
 
-    highs, lows = _swings(candles)
-    close = float(candles[-1]["close"])
-    recent = candles[-min(24, len(candles)):]
-    range_high = max(float(c["high"]) for c in recent)
-    range_low = min(float(c["low"]) for c in recent)
-    range_size = max(range_high - range_low, 1e-12)
+    sample = list(candles[-min(lookback, len(candles)):])
+    highs, lows = _swings(sample)
+    if len(highs) < 2 or len(lows) < 2:
+        return {
+            "bias": "NEUTRAL", "event": "NONE", "phase": "INSUFFICIENT_SWINGS",
+            "structural_score": 0, "momentum": 0.0,
+            "last_swing_high": highs[-1][1] if highs else None,
+            "last_swing_low": lows[-1][1] if lows else None,
+        }
 
-    structural_score = 0
-    if len(highs) >= 2:
-        if highs[-1][1] > highs[-2][1]:
-            structural_score += 1
-        elif highs[-1][1] < highs[-2][1]:
-            structural_score -= 1
+    previous_high, last_high = highs[-2][1], highs[-1][1]
+    previous_low, last_low = lows[-2][1], lows[-1][1]
+    close = float(sample[-1]["close"])
 
-    if len(lows) >= 2:
-        if lows[-1][1] > lows[-2][1]:
-            structural_score += 1
-        elif lows[-1][1] < lows[-2][1]:
-            structural_score -= 1
+    high_rising = last_high > previous_high
+    high_falling = last_high < previous_high
+    low_rising = last_low > previous_low
+    low_falling = last_low < previous_low
 
-    last_high = highs[-1][1] if highs else None
-    last_low = lows[-1][1] if lows else None
+    bullish_structure = high_rising and low_rising
+    bearish_structure = high_falling and low_falling
+    structural_score = int(high_rising) - int(high_falling) + int(low_rising) - int(low_falling)
 
-    # Confirmed structural break gets priority over a temporary pullback.
-    bullish_break = last_high is not None and close > last_high
-    bearish_break = last_low is not None and close < last_low
+    atr = _atr(sample)
+    buffer = atr * max(0.0, float(break_atr_buffer))
+    bullish_break = close > last_high + buffer
+    bearish_break = close < last_low - buffer
 
-    # Short-term momentum is a tie-breaker when swing progression is mixed.
-    lookback = min(6, len(candles) - 1)
-    old_close = float(candles[-1 - lookback]["close"])
-    momentum = close - old_close
-    momentum_threshold = range_size * 0.08
+    lookback_momentum = min(6, len(sample) - 1)
+    momentum = close - float(sample[-1 - lookback_momentum]["close"])
+    range_high = max(float(c["high"]) for c in sample[-24:])
+    range_low = min(float(c["low"]) for c in sample[-24:])
 
-    position = (close - range_low) / range_size
-
-    if bullish_break and not bearish_break:
-        bias = "BULLISH"
-        event = "BOS"
-    elif bearish_break and not bullish_break:
-        bias = "BEARISH"
-        event = "BOS"
-    elif structural_score >= 2:
-        bias = "BULLISH"
-        event = "CHoCH" if momentum < 0 else "NONE"
-    elif structural_score <= -2:
-        bias = "BEARISH"
-        event = "CHoCH" if momentum > 0 else "NONE"
-    elif structural_score == 1:
-        # One-sided structure plus supportive momentum keeps the HTF bias
-        # during an ordinary pullback instead of flipping to NEUTRAL.
-        if momentum > momentum_threshold or position > 0.58:
+    if bullish_structure:
+        if bearish_break:
+            bias, event, phase = "NEUTRAL", "CHoCH_BEARISH", "BEARISH_REVERSAL_PENDING"
+        else:
             bias = "BULLISH"
-            event = "CHoCH" if momentum > momentum_threshold else "NONE"
+            event = "BOS" if bullish_break else "NONE"
+            phase = "PULLBACK" if momentum < 0 else "TREND"
+    elif bearish_structure:
+        if bullish_break:
+            bias, event, phase = "NEUTRAL", "CHoCH_BULLISH", "BULLISH_REVERSAL_PENDING"
         else:
-            bias = "NEUTRAL"
-            event = "NONE"
-    elif structural_score == -1:
-        if momentum < -momentum_threshold or position < 0.42:
             bias = "BEARISH"
-            event = "CHoCH" if momentum < -momentum_threshold else "NONE"
-        else:
-            bias = "NEUTRAL"
-            event = "NONE"
+            event = "BOS" if bearish_break else "NONE"
+            phase = "PULLBACK" if momentum > 0 else "TREND"
     else:
-        # No clean two-swing pattern: only classify if price location and
-        # momentum agree strongly. Otherwise remain neutral.
-        if position > 0.62 and momentum > momentum_threshold:
-            bias = "BULLISH"
-            event = "NONE"
-        elif position < 0.38 and momentum < -momentum_threshold:
-            bias = "BEARISH"
-            event = "NONE"
-        else:
-            bias = "NEUTRAL"
-            event = "NONE"
+        # Mixed swing progression is a range, not permission to infer trend
+        # from candle momentum or price location.
+        bias, event, phase = "NEUTRAL", "NONE", "RANGE"
+        if bullish_break:
+            event, phase = "CHoCH_BULLISH", "BULLISH_BREAKOUT_PENDING"
+        elif bearish_break:
+            event, phase = "CHoCH_BEARISH", "BEARISH_BREAKOUT_PENDING"
 
     return {
         "bias": bias,
         "event": event,
+        "phase": phase,
+        "trend_structure": (
+            "BULLISH" if bullish_structure else
+            "BEARISH" if bearish_structure else "RANGE"
+        ),
         "last_swing_high": last_high,
         "last_swing_low": last_low,
+        "previous_swing_high": previous_high,
+        "previous_swing_low": previous_low,
         "structural_score": structural_score,
         "momentum": momentum,
+        "atr": atr,
+        "break_buffer": buffer,
         "range_high": range_high,
         "range_low": range_low,
     }

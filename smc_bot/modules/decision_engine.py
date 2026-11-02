@@ -1,6 +1,5 @@
 from config import (
     DEFAULT_LOT_SIZE,
-    MIN_ATR_SL_MULTIPLIER,
     MIN_RISK_ATR_MULTIPLIER,
     MIN_SCORE,
     MIN_SPREAD_MULTIPLIER,
@@ -173,6 +172,39 @@ def _structure_confirmed(h4, h1):
     return h4.get("event") in valid_events or h1.get("event") in valid_events
 
 
+def _confirmed_swing_reference(candles, end_index, direction, entry, zone_low, zone_high, lookback=48, span=2):
+    """Find the latest confirmed M15 swing relevant to the trade before signal time.
+
+    The pivot's right-hand confirmation candles must already exist at
+    end_index. No candles after the signal candle are used.
+    """
+    end_index = min(int(end_index), len(candles) - 1)
+    start = max(span, end_index - lookback)
+    highs, lows = [], []
+    for i in range(start, end_index - span + 1):
+        high = float(candles[i]["high"])
+        low = float(candles[i]["low"])
+        if all(high > float(candles[j]["high"])
+               for j in range(i - span, i + span + 1) if j != i):
+            highs.append((i, high))
+        if all(low < float(candles[j]["low"])
+               for j in range(i - span, i + span + 1) if j != i):
+            lows.append((i, low))
+
+    if direction == "BUY":
+        relevant = [item for item in lows if item[1] < entry]
+        if relevant:
+            index, swing = relevant[-1]
+            return min(float(zone_low), swing), f"CONFIRMED_SWING_LOW@{index}", swing
+        return None, "NO_CONFIRMED_SWING_LOW", None
+
+    relevant = [item for item in highs if item[1] > entry]
+    if relevant:
+        index, swing = relevant[-1]
+        return max(float(zone_high), swing), f"CONFIRMED_SWING_HIGH@{index}", swing
+    return None, "NO_CONFIRMED_SWING_HIGH", None
+
+
 def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, symbol):
     """Build a continuation setup without mandatory sweep, displacement, or FVG filters."""
     wanted = "BULLISH" if direction == "BUY" else "BEARISH"
@@ -197,14 +229,19 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
     if atr <= 0:
         return None, "NO M15 ATR"
 
-    # Structural SL uses the OB boundary plus recent swing context, not a liquidity sweep.
-    lookback = m15_candles[max(0, signal_index - 5):signal_index + 1]
+    # Place the stop beyond the latest confirmed structural swing and OB edge.
+    # A small volatility/spread buffer sits beyond that structure; the existing
+    # minimum-risk guard below still rejects stops that are too tight.
+    swing_reference, sl_basis, swing_price = _confirmed_swing_reference(
+        m15_candles, signal_index, direction, entry, zone_low, zone_high
+    )
+    if swing_reference is None:
+        return None, f"NO CONFIRMED STRUCTURAL SWING FOR SL ({sl_basis})"
+    sl_buffer = max(atr * 0.10, _reference_spread_price(symbol) * MIN_SPREAD_MULTIPLIER)
     if direction == "BUY":
-        structural_low = min([zone_low] + [float(c["low"]) for c in lookback])
-        sl = round(structural_low - atr * MIN_ATR_SL_MULTIPLIER, digits)
+        sl = round(swing_reference - sl_buffer, digits)
     else:
-        structural_high = max([zone_high] + [float(c["high"]) for c in lookback])
-        sl = round(structural_high + atr * MIN_ATR_SL_MULTIPLIER, digits)
+        sl = round(swing_reference + sl_buffer, digits)
 
     risk = abs(entry - sl)
     pip = _pip_size(symbol)
@@ -269,7 +306,8 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
         "bias": wanted, "h4_bias": h4["bias"], "h1_bias": h1["bias"],
         "direction": direction, "setup_type": "CONTINUATION",
         "entry": entry, "entry_low": round(zone_low, digits), "entry_high": round(zone_high, digits),
-        "sl": sl, "tp1": round(tp1, digits), "tp2": round(tp2, digits),
+        "sl": sl, "sl_basis": sl_basis, "sl_swing": round(swing_price, digits),
+        "tp1": round(tp1, digits), "tp2": round(tp2, digits),
         "rr": round(tp1_rr, 2), "tp2_rr": round(tp2_rr, 2),
         "score": score, "grade": "S5" if score == 5 else "S4",
         "event": h1["event"] if h1["event"] != "NONE" else h4["event"],
