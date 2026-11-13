@@ -68,6 +68,7 @@ def format_alert(symbol, setup, candle_time, current_price, entry_status, instru
         f"*Direction:* {setup['direction']}\n"
         f"*Grade:* {setup['grade']} / Score {setup['score']}/5\n"
         f"*Timeframe:* M15 execution\n"
+        f"*Generated At:* {setup.get('generated_at', 'Not recorded')}\n"
         f"*H4 Bias:* {setup.get('h4_bias', 'UNKNOWN')}\n"
         f"*H1 Bias:* {setup.get('h1_bias', 'UNKNOWN')}\n\n"
         f"📍 *Current Price:* {current_price}\n"
