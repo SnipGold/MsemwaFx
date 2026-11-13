@@ -18,7 +18,16 @@ from modules.twelvedata import get_candles
 
 CACHE_DIR = "data_cache"
 SENT_FILE = "sent.json"
+EAT = timezone(timedelta(hours=3), name="EAT")
 os.makedirs(CACHE_DIR, exist_ok=True)
+
+
+def eat_now():
+    return datetime.now(timezone.utc).astimezone(EAT)
+
+
+def eat_stamp():
+    return eat_now().strftime("%Y-%m-%d %H:%M:%S EAT")
 
 
 def cached_m15(symbol):
@@ -28,12 +37,18 @@ def cached_m15(symbol):
     try:
         with open(path, encoding="utf-8") as f:
             saved = json.load(f)
-        if saved.get("data") and len(saved["data"]) >= M15_OUTPUTSIZE and now - float(saved.get("time", 0)) < 900:
+        cache_age = now - float(saved.get("time", 0))
+        if saved.get("data") and len(saved["data"]) >= M15_OUTPUTSIZE and cache_age < 900:
+            print(f"  [{eat_stamp()}] M15 CACHE_HIT age={cache_age:.1f}s last_candle={saved['data'][-1].get('time', 'UNKNOWN')}")
             return saved["data"]
     except (FileNotFoundError, ValueError, TypeError, OSError):
         pass
 
+    print(f"  [{eat_stamp()}] M15 FETCH_START")
+    fetch_started = time.perf_counter()
     data = get_candles(symbol, "15min", M15_OUTPUTSIZE)
+    fetch_elapsed = time.perf_counter() - fetch_started
+    print(f"  [{eat_stamp()}] M15 FETCH_END duration={fetch_elapsed:.2f}s rows={len(data) if data else 0}")
     if data:
         try:
             with open(path, "w", encoding="utf-8") as f:
@@ -130,7 +145,7 @@ def setup_fresh(setup, m15):
 
 
 def run():
-    print("MsemwaFx Cloud Scan")
+    print(f"[{eat_stamp()}] MsemwaFx Cloud Scan START")
 
     closed, reason = market_closed_or_near_close()
     if closed:
@@ -148,19 +163,24 @@ def run():
     alerts = 0
 
     for i, symbol in enumerate(SYMBOLS, 1):
-        print(f"[{i}/{len(SYMBOLS)}] {symbol}")
+        print(f"[{eat_stamp()}] [{i}/{len(SYMBOLS)}] {symbol} SCAN_START")
         candles = cached_m15(symbol)
 
         if len(candles) < 80:
             print("  NO DATA")
             continue
 
+        print(f"  [{eat_stamp()}] BUILD_HTF_START last_raw_m15={candles[-1].get('time', 'UNKNOWN')}")
         h4, h1, m15 = build_htf(candles)
+        print(f"  [{eat_stamp()}] BUILD_HTF_END closed_m15={len(m15)} latest_closed_m15={m15[-1].get('time', 'UNKNOWN') if m15 else 'NONE'} h1={len(h1)} h4={len(h4)}")
         if len(h4) < 10 or len(h1) < 10 or len(m15) < 20:
             print("  INSUFFICIENT DATA")
             continue
 
+        analysis_started = time.perf_counter()
+        print(f"  [{eat_stamp()}] ANALYSIS_START")
         setup, reason = analyze_pair_diagnostic(h4, h1, m15, symbol)
+        print(f"  [{eat_stamp()}] ANALYSIS_END duration={time.perf_counter() - analysis_started:.3f}s result={'SETUP' if setup else 'NO_SETUP'}")
         # Print the same H4 dealing range used by the decision engine for auditability.
         h4_range = h4[-20:]
         if h4_range:
@@ -189,7 +209,10 @@ def run():
 
         signal_time = parse_time(setup["signal_candle"])
         expiry_time = signal_time + timedelta(minutes=15 * SETUP_EXPIRY_CANDLES)
-        setup["expiry_time"] = expiry_time.strftime("%Y-%m-%d %H:%M UTC")
+        setup["generated_at"] = eat_stamp()
+        setup["expiry_time"] = expiry_time.astimezone(EAT).strftime("%Y-%m-%d %H:%M EAT")
+        signal_candle_eat = signal_time.astimezone(EAT).strftime("%Y-%m-%d %H:%M EAT")
+        print(f"  [{setup['generated_at']}] SIGNAL_GENERATED candle={signal_candle_eat} age={age} M15 bars")
 
         setup_key = "|".join([
             symbol,
@@ -206,16 +229,22 @@ def run():
         msg = format_alert(
             symbol,
             setup,
-            setup["signal_candle"],
+            signal_candle_eat,
             current_price,
             entry_status,
             instruction,
         )
 
+        print(f"  [{eat_stamp()}] TELEGRAM_SEND_START")
+        telegram_started = time.perf_counter()
         tg = send_telegram(msg)
+        print(f"  [{eat_stamp()}] TELEGRAM_SEND_END duration={time.perf_counter() - telegram_started:.2f}s success={tg}")
 
         if tg:
+            print(f"  [{eat_stamp()}] WHATSAPP_SEND_START")
+            whatsapp_started = time.perf_counter()
             wa = send_whatsapp(msg)
+            print(f"  [{eat_stamp()}] WHATSAPP_SEND_END duration={time.perf_counter() - whatsapp_started:.2f}s success={wa}")
             sent[alert_key] = time.time()
             alerts += 1
             print(
