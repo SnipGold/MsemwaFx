@@ -275,22 +275,29 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
             f"EQ={eq:.5f}; entry={entry:.5f})"
         )
 
-    min_target_distance = max(min_cost, risk * MIN_TP1_RR)
-    levels = _liquidity_levels(m15_candles, entry, direction, min_target_distance, symbol)
-    tp1_kind = tp2_kind = None
-    tp1 = tp2 = None
-    for kind, level in levels:
-        rr = abs(level - entry) / risk
-        if tp1 is None and rr >= MIN_TP1_RR:
-            tp1, tp1_kind = level, kind
-        elif tp1 is not None and rr >= MIN_TP2_RR:
-            tp2, tp2_kind = level, kind
-            break
+    # Targets are the next major H4 supply/demand zones, not arbitrary M15
+    # liquidity pivots. The near edge of each opposing zone is the target.
+    h4_zones = analyze_zones(h4_candles, lookback=160, pivot_span=3, max_zones=10)
+    if direction == "BUY":
+        major_targets = sorted(
+            float(z["low"]) for z in h4_zones["supply"] if float(z["low"]) > entry
+        )
+        tp1_kind = "H4_MAJOR_RESISTANCE"
+        tp2_kind = "NEXT_H4_MAJOR_RESISTANCE"
+    else:
+        major_targets = sorted(
+            (float(z["high"]) for z in h4_zones["demand"] if float(z["high"]) < entry),
+            reverse=True,
+        )
+        tp1_kind = "H4_MAJOR_SUPPORT"
+        tp2_kind = "NEXT_H4_MAJOR_SUPPORT"
 
-    if tp1 is None:
-        return None, "NO LIQUIDITY FAR ENOUGH FOR TP1"
-    if tp2 is None:
-        return None, "NO EXTERNAL LIQUIDITY FOR TP2"
+    tp1 = major_targets[0] if major_targets else None
+    tp2 = major_targets[1] if len(major_targets) > 1 else None
+    if tp1 is None or abs(tp1 - entry) / risk < MIN_TP1_RR:
+        return None, "NEXT H4 MAJOR SUPPORT/RESISTANCE DOES NOT MEET TP1 R:R"
+    if tp2 is None or abs(tp2 - entry) / risk < MIN_TP2_RR:
+        return None, "NO SECOND H4 MAJOR LEVEL WITH REQUIRED TP2 R:R"
     if direction == "BUY" and not (sl < entry < tp1 < tp2):
         return None, "DIRECTION/LEVEL MISMATCH — BUY requires SL < entry < TP1 < TP2"
     if direction == "SELL" and not (tp2 < tp1 < entry < sl):
