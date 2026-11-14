@@ -62,39 +62,46 @@ def _zone_label(zone):
 
 
 def format_alert(symbol, setup, candle_time, current_price, entry_status, instruction):
+    target_lines = []
+    for number in (1, 2, 3):
+        price = setup.get(f"tp{number}")
+        if price is None:
+            continue
+        rr = setup.get("rr") if number == 1 else setup.get(f"tp{number}_rr")
+        basis = setup.get(f"tp{number}_type") or "H1/H4 major zone"
+        target_lines.append(f"🎯 *TP{number}:* {price} | {basis} | R:R 1:{rr}")
+    targets_text = "\\n".join(target_lines) if target_lines else "No valid major target identified"
     return (
-        f"🚨 *MsemwaFx Institutional Alert*\n\n"
-        f"*Pair:* {symbol}\n"
-        f"*Direction:* {setup['direction']}\n"
-        f"*Grade:* {setup['grade']} / Score {setup['score']}/5\n"
-        f"*Timeframe:* M15 setup / M5 entry confirmation\n"
-        f"*Generated At:* {setup.get('generated_at', 'Not recorded')}\n"
-        f"*H4 Bias:* {setup.get('h4_bias', 'UNKNOWN')}\n"
-        f"*H1 Bias:* {setup.get('h1_bias', 'UNKNOWN')}\n\n"
-        f"📍 *Current Price:* {current_price}\n"
-        f"📌 *Entry Zone:* {setup['entry_low']} - {setup['entry_high']}\n"
-        f"🎯 *Planned Entry:* {setup['entry']}\n"
-        f"*Entry Status:* {entry_status}\n"
-        f"*Instruction:* {instruction}\n"
-        f"⏳ *Expiry:* {setup['expiry_time']}\n\n"
-        f"🛑 *Stop Loss:* {setup['sl']}\n"
-        f"*SL Basis:* {setup.get('sl_basis', 'Not recorded')} ({setup.get('sl_swing', 'N/A')})\n"
-        f"📏 *Risk:* {setup['risk_pips']} pips\n"
-        f"📦 *Lot Size:* {setup['lot_size']:.2f}\n"
-        f"🎯 *TP1:* {setup['tp1']}\n"
-        f"🎯 *TP2:* {setup['tp2']}\n"
-        f"*TP Basis:* {setup.get('tp1_type', 'H4 major level')} / {setup.get('tp2_type', 'H4 major level')}\n"
-        f"⚖️ *Projected R:R:* {setup['rr']} / TP2 {setup.get('tp2_rr', 'N/A')}\n\n"
-        f"*Structure:* {setup['event']}\n"
-        f"*FVG:* {setup['fvg']}\n"
-        f"*Sweep:* {setup['sweep']}\n"
-        f"*Order Block:* {setup['order_block']}\n"
-        f"*Key Support:* {setup.get('key_support') or 'Not identified'}\n"
-        f"*Key Resistance:* {setup.get('key_resistance') or 'Not identified'}\n"
-        f"*Nearest Demand:* {_zone_label(setup.get('nearest_demand'))}\n"
-        f"*Nearest Supply:* {_zone_label(setup.get('nearest_supply'))}\n"
-        f"*Signal Candle:* {candle_time}\n\n"
-        f"_MsemwaFx — H4/H1 → M15_"
+        f"🚨 *MsemwaFx Institutional Alert*\\n\\n"
+        f"*Pair:* {symbol}\\n"
+        f"*Direction:* {setup['direction']}\\n"
+        f"*Grade:* {setup['grade']} / Score {setup['score']}/5\\n"
+        f"*Timeframe:* H4/H1 bias | M15 setup and SL | optional M5 entry confirmation\\n"
+        f"*Generated At:* {setup.get('generated_at', 'Not recorded')}\\n"
+        f"*H4 Bias:* {setup.get('h4_bias', 'UNKNOWN')}\\n"
+        f"*H1 Bias:* {setup.get('h1_bias', 'UNKNOWN')}\\n\\n"
+        f"📍 *Current Price:* {current_price}\\n"
+        f"📌 *Entry Zone:* {setup['entry_low']} - {setup['entry_high']}\\n"
+        f"🎯 *Planned Entry:* {setup['entry']}\\n"
+        f"*Entry Status:* {entry_status}\\n"
+        f"*Instruction:* {instruction}\\n"
+        f"⏳ *Expiry:* {setup['expiry_time']}\\n\\n"
+        f"🛑 *Recommended Stop Loss:* {setup['sl']}\\n"
+        f"*SL Basis:* {setup.get('sl_basis', 'Confirmed M15 swing')} ({setup.get('sl_swing', 'N/A')})\\n"
+        f"📏 *Risk Distance:* {setup['risk_pips']} pips\\n"
+        f"📦 *Reference Lot Size:* {setup['lot_size']:.2f}\\n\\n"
+        f"*Major-zone profit targets:*\\n{targets_text}\\n\\n"
+        f"*Target policy:* H1/H4 supply-demand zones only; minor immediate support/resistance is not used for TP.\\n"
+        f"*Structure:* {setup['event']}\\n"
+        f"*FVG:* {setup['fvg']}\\n"
+        f"*Sweep:* {setup['sweep']}\\n"
+        f"*Order Block:* {setup['order_block']}\\n"
+        f"*Key Support (context only):* {setup.get('key_support') or 'Not identified'}\\n"
+        f"*Key Resistance (context only):* {setup.get('key_resistance') or 'Not identified'}\\n"
+        f"*Nearest Demand:* {_zone_label(setup.get('nearest_demand'))}\\n"
+        f"*Nearest Supply:* {_zone_label(setup.get('nearest_supply'))}\\n"
+        f"*Signal Candle:* {candle_time}\\n\\n"
+        f"_MsemwaFx — H4/H1 → M15 → optional M5_"
     )
 
 
