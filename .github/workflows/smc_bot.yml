@@ -9,7 +9,7 @@ on:
       - "smc_bot/**"
       - ".github/workflows/smc_bot.yml"
   schedule:
-    - cron: "7,22,37,52 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 concurrency:
@@ -80,6 +80,7 @@ jobs:
           path: |
             smc_bot/data_cache
             smc_bot/sent.json
+            smc_bot/m5_usage.json
           key: msemwafx-state-${{ github.run_id }}
           restore-keys: |
             msemwafx-state-
