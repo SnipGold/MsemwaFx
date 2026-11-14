@@ -261,8 +261,8 @@ def run():
         scout_alert_key = f"SCOUT|{setup_key}"
         if scout_alert_key not in sent:
             scout_msg = (
-                "🔎 *MsemwaFx Scout — QUALIFIED SETUP FOR TRADER REVIEW*\\n"
-                "*Decision required: TAKE or SKIP. No automatic execution.*\\n\\n"
+                "🔎 *MsemwaFx Scout — QUALIFIED SETUP FOR TRADER REVIEW*\n"
+                "*Decision required: TAKE or SKIP. No automatic execution.*\n\n"
                 + msg
             )
             scout_tg = send_telegram_scout(scout_msg)
