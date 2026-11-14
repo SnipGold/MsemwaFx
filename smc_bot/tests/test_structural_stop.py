@@ -22,7 +22,7 @@ class StructuralStopTests(unittest.TestCase):
         )
         self.assertEqual(reference, 94.0)
         self.assertEqual(swing, 94.0)
-        self.assertEqual(basis, "CONFIRMED_SWING_LOW@20")
+        self.assertEqual(basis, "CONFIRMED_M15_SWING_LOW@20")
 
     def test_sell_uses_latest_confirmed_swing_high(self):
         highs = [103.0] * 25
@@ -36,7 +36,7 @@ class StructuralStopTests(unittest.TestCase):
         )
         self.assertEqual(reference, 112.0)
         self.assertEqual(swing, 112.0)
-        self.assertEqual(basis, "CONFIRMED_SWING_HIGH@18")
+        self.assertEqual(basis, "CONFIRMED_M15_SWING_HIGH@18")
 
 
 if __name__ == "__main__":
