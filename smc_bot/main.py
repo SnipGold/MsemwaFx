@@ -123,7 +123,7 @@ def evaluate_m5_entry(setup, candles):
     entry_low = float(setup["entry_low"])
     entry_high = float(setup["entry_high"])
     sl = float(setup["sl"])
-    tp1 = float(setup["tp1"]) if setup.get("tp1") is not None else None if setup.get("tp1") is not None else None
+    tp1 = float(setup["tp1"]) if setup.get("tp1") is not None else None
 
     for candle in candles:
         try:
@@ -201,7 +201,7 @@ def evaluate_entry_path(setup, m15):
     signal_index = int(setup["signal_index"])
     entry = float(setup["entry"])
     sl = float(setup["sl"])
-    tp1 = float(setup["tp1"])
+    tp1 = float(setup["tp1"]) if setup.get("tp1") is not None else None
     entered = False
 
     for candle in m15[signal_index + 1:]:
