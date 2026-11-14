@@ -58,6 +58,104 @@ def cached_m15(symbol):
     return data
 
 
+M5_CACHE_TTL = 300
+M5_OUTPUTSIZE = 100
+M5_DAILY_BUDGET = 32
+M5_USAGE_FILE = "m5_usage.json"
+
+
+def load_m5_usage():
+    today = datetime.now(timezone.utc).date().isoformat()
+    try:
+        with open(M5_USAGE_FILE, encoding="utf-8") as f:
+            state = json.load(f)
+        if state.get("date") == today:
+            return state
+    except (FileNotFoundError, ValueError, TypeError, OSError):
+        pass
+    return {"date": today, "requests": 0}
+
+
+def save_m5_usage(state):
+    try:
+        with open(M5_USAGE_FILE, "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=2)
+    except OSError as exc:
+        print(f"Could not save M5 credit state: {exc}")
+
+
+def cached_m5(symbol, usage):
+    path = os.path.join(CACHE_DIR, f"{symbol.replace('/', '_')}_5min.json")
+    now = time.time()
+    try:
+        with open(path, encoding="utf-8") as f:
+            saved = json.load(f)
+        if saved.get("data") and now - float(saved.get("time", 0)) < M5_CACHE_TTL:
+            print(f"  M5 CACHE_HIT {symbol}")
+            return saved["data"]
+    except (FileNotFoundError, ValueError, TypeError, OSError):
+        pass
+
+    if int(usage.get("requests", 0)) >= M5_DAILY_BUDGET:
+        print(f"  M5 BUDGET_EXHAUSTED {usage['requests']}/{M5_DAILY_BUDGET}")
+        return []
+
+    print(f"  M5 FETCH_START {symbol} budget={usage['requests']}/{M5_DAILY_BUDGET}")
+    data = get_candles(symbol, "5min", M5_OUTPUTSIZE)
+    if data:
+        usage["requests"] = int(usage.get("requests", 0)) + 1
+        save_m5_usage(usage)
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump({"time": now, "data": data}, f)
+        except OSError:
+            pass
+        print(f"  M5 FETCH_END {symbol} rows={len(data)} budget={usage['requests']}/{M5_DAILY_BUDGET}")
+    return data
+
+
+def evaluate_m5_entry(setup, candles):
+    """Confirm an entry only from a closed M5 candle after the M15 signal."""
+    if not candles:
+        return False, "NO M5 DATA"
+    signal_time = parse_time(setup["signal_candle"])
+    now = datetime.now(timezone.utc)
+    entry_low = float(setup["entry_low"])
+    entry_high = float(setup["entry_high"])
+    sl = float(setup["sl"])
+    tp1 = float(setup["tp1"])
+
+    for candle in candles:
+        try:
+            candle_time = parse_time(candle["time"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if candle_time <= signal_time or candle_time.timestamp() + 300 > now.timestamp():
+            continue
+
+        high, low = float(candle["high"]), float(candle["low"])
+        open_price, close = float(candle["open"]), float(candle["close"])
+        hit_zone = low <= entry_high and high >= entry_low
+
+        if setup["direction"] == "BUY":
+            hit_sl, hit_tp = low <= sl, high >= tp1
+            if not hit_zone and (hit_sl or hit_tp):
+                return False, "M5 SETUP INVALIDATED OR ENTRY MISSED"
+            if hit_zone and (hit_sl or hit_tp):
+                return False, "M5 ENTRY AMBIGUOUS — SL/TP SHARED CANDLE"
+            if hit_zone and close > open_price and close > entry_low:
+                return True, f"M5 bullish close confirmed in entry zone ({candle['time']})"
+        else:
+            hit_sl, hit_tp = high >= sl, low <= tp1
+            if not hit_zone and (hit_sl or hit_tp):
+                return False, "M5 SETUP INVALIDATED OR ENTRY MISSED"
+            if hit_zone and (hit_sl or hit_tp):
+                return False, "M5 ENTRY AMBIGUOUS — SL/TP SHARED CANDLE"
+            if hit_zone and close < open_price and close < entry_high:
+                return True, f"M5 bearish close confirmed in entry zone ({candle['time']})"
+    return False, "WAITING FOR CLOSED M5 ENTRY CONFIRMATION"
+
+
 def load_sent():
     try:
         with open(SENT_FILE, encoding="utf-8") as f:
@@ -153,6 +251,7 @@ def run():
         return
 
     sent = load_sent()
+    m5_usage = load_m5_usage()
     now = time.time()
     sent = {
         k: v for k, v in sent.items()
@@ -206,6 +305,14 @@ def run():
         found += 1
         current_price = round(float(m15[-1]["close"]), 5)
         entry_status, instruction = evaluate_entry_path(setup, m15)
+
+        m5_candles = cached_m5(symbol, m5_usage)
+        m5_confirmed, m5_reason = evaluate_m5_entry(setup, m5_candles)
+        if m5_confirmed:
+            entry_status = "M5 ENTRY CONFIRMED"
+            instruction = m5_reason
+        elif m5_candles:
+            print(f"  M5 MONITOR: {m5_reason}")
 
         signal_time = parse_time(setup["signal_candle"])
         expiry_time = signal_time + timedelta(minutes=15 * SETUP_EXPIRY_CANDLES)
@@ -261,7 +368,11 @@ def run():
             time.sleep(8)
 
     save_sent(sent)
-    print(f"Setups found: {found} | New alerts: {alerts}")
+    save_m5_usage(m5_usage)
+    print(
+        f"Setups found: {found} | New alerts: {alerts} | "
+        f"M5 credits used today: {m5_usage['requests']}/{M5_DAILY_BUDGET}"
+    )
 
 
 if __name__ == "__main__":
