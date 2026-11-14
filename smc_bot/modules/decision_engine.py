@@ -4,7 +4,6 @@ from config import (
     MIN_SCORE,
     MIN_SPREAD_MULTIPLIER,
     MIN_TP1_RR,
-    MIN_TP2_RR,
 )
 from modules.structure import analyze_structure
 from modules.orderblock import detect_order_block
@@ -195,13 +194,13 @@ def _confirmed_swing_reference(candles, end_index, direction, entry, zone_low, z
         relevant = [item for item in lows if item[1] < entry]
         if relevant:
             index, swing = relevant[-1]
-            return min(float(zone_low), swing), f"CONFIRMED_SWING_LOW@{index}", swing
+            return swing, f"CONFIRMED_M15_SWING_LOW@{index}", swing
         return None, "NO_CONFIRMED_SWING_LOW", None
 
     relevant = [item for item in highs if item[1] > entry]
     if relevant:
         index, swing = relevant[-1]
-        return max(float(zone_high), swing), f"CONFIRMED_SWING_HIGH@{index}", swing
+        return swing, f"CONFIRMED_M15_SWING_HIGH@{index}", swing
     return None, "NO_CONFIRMED_SWING_HIGH", None
 
 
@@ -275,33 +274,56 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
             f"EQ={eq:.5f}; entry={entry:.5f})"
         )
 
-    # Targets are the next major H4 supply/demand zones, not arbitrary M15
-    # liquidity pivots. The near edge of each opposing zone is the target.
+    # Build profit targets only from major H1/H4 supply-demand zones.
+    # M15 key support/resistance and minor liquidity pivots are deliberately
+    # excluded. Keep the nearest valid structural objectives and report their
+    # actual R multiples; TP2/TP3 are optional when no further major zone exists.
+    h1_zones = analyze_zones(h1_candles, lookback=160, pivot_span=3, max_zones=10)
     h4_zones = analyze_zones(h4_candles, lookback=160, pivot_span=3, max_zones=10)
+    candidates = []
     if direction == "BUY":
-        major_targets = sorted(
-            float(z["low"]) for z in h4_zones["supply"] if float(z["low"]) > entry
-        )
-        tp1_kind = "H4_MAJOR_RESISTANCE"
-        tp2_kind = "NEXT_H4_MAJOR_RESISTANCE"
+        for timeframe, zone_set in (("H1", h1_zones), ("H4", h4_zones)):
+            for zone in zone_set["supply"]:
+                level = float(zone["low"])
+                if level > entry and (level - entry) / risk >= MIN_TP1_RR:
+                    candidates.append({"price": level, "basis": f"{timeframe}_MAJOR_SUPPLY", "zone": zone})
+        candidates.sort(key=lambda item: item["price"])
     else:
-        major_targets = sorted(
-            (float(z["high"]) for z in h4_zones["demand"] if float(z["high"]) < entry),
-            reverse=True,
-        )
-        tp1_kind = "H4_MAJOR_SUPPORT"
-        tp2_kind = "NEXT_H4_MAJOR_SUPPORT"
+        for timeframe, zone_set in (("H1", h1_zones), ("H4", h4_zones)):
+            for zone in zone_set["demand"]:
+                level = float(zone["high"])
+                if level < entry and (entry - level) / risk >= MIN_TP1_RR:
+                    candidates.append({"price": level, "basis": f"{timeframe}_MAJOR_DEMAND", "zone": zone})
+        candidates.sort(key=lambda item: item["price"], reverse=True)
 
-    tp1 = major_targets[0] if major_targets else None
-    tp2 = major_targets[1] if len(major_targets) > 1 else None
-    if tp1 is None or abs(tp1 - entry) / risk < MIN_TP1_RR:
-        return None, "NEXT H4 MAJOR SUPPORT/RESISTANCE DOES NOT MEET TP1 R:R"
-    if tp2 is None or abs(tp2 - entry) / risk < MIN_TP2_RR:
-        return None, "NO SECOND H4 MAJOR LEVEL WITH REQUIRED TP2 R:R"
-    if direction == "BUY" and not (sl < entry < tp1 < tp2):
-        return None, "DIRECTION/LEVEL MISMATCH — BUY requires SL < entry < TP1 < TP2"
-    if direction == "SELL" and not (tp2 < tp1 < entry < sl):
-        return None, "DIRECTION/LEVEL MISMATCH — SELL requires TP2 < TP1 < entry < SL"
+    # Merge nearly identical H1/H4 boundaries, preferring the H4 label because
+    # it represents the broader structural level.
+    merge_tolerance = max(_atr(h1_candles) * 0.15, _pip_size(symbol) * 2)
+    targets = []
+    for candidate in candidates:
+        match = next((item for item in targets
+                      if abs(item["price"] - candidate["price"]) <= merge_tolerance), None)
+        if match is None:
+            targets.append(candidate)
+        elif candidate["basis"].startswith("H4_"):
+            match.update(candidate)
+
+    targets = targets[:3]
+    if not targets:
+        return None, "NO H1/H4 MAJOR ZONE PROVIDES THE MINIMUM TP1 R:R"
+
+    tp1 = targets[0]["price"]
+    tp2 = targets[1]["price"] if len(targets) > 1 else None
+    tp3 = targets[2]["price"] if len(targets) > 2 else None
+    tp1_kind = targets[0]["basis"]
+    tp2_kind = targets[1]["basis"] if len(targets) > 1 else None
+    tp3_kind = targets[2]["basis"] if len(targets) > 2 else None
+    if direction == "BUY":
+        if not (sl < entry < tp1) or (tp2 is not None and tp2 <= tp1) or (tp3 is not None and tp3 <= (tp2 if tp2 is not None else tp1)):
+            return None, "DIRECTION/LEVEL MISMATCH — BUY target ordering is invalid"
+    else:
+        if not (tp1 < entry < sl) or (tp2 is not None and tp2 >= tp1) or (tp3 is not None and tp3 >= (tp2 if tp2 is not None else tp1)):
+            return None, "DIRECTION/LEVEL MISMATCH — SELL target ordering is invalid"
 
     zones = analyze_zones(m15_candles)
     score = 5 if h4["event"] == "BOS" and h1["event"] == "BOS" else 4
@@ -314,8 +336,12 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
         "direction": direction, "setup_type": "CONTINUATION",
         "entry": entry, "entry_low": round(zone_low, digits), "entry_high": round(zone_high, digits),
         "sl": sl, "sl_basis": sl_basis, "sl_swing": round(swing_price, digits),
-        "tp1": round(tp1, digits), "tp2": round(tp2, digits),
-        "rr": round(tp1_rr, 2), "tp2_rr": round(tp2_rr, 2),
+        "tp1": round(tp1, digits),
+        "tp2": round(tp2, digits) if tp2 is not None else None,
+        "tp3": round(tp3, digits) if tp3 is not None else None,
+        "rr": round(abs(tp1 - entry) / risk, 2),
+        "tp2_rr": round(abs(tp2 - entry) / risk, 2) if tp2 is not None else None,
+        "tp3_rr": round(abs(tp3 - entry) / risk, 2) if tp3 is not None else None,
         "score": score, "grade": "S5" if score == 5 else "S4",
         "event": h1["event"] if h1["event"] != "NONE" else h4["event"],
         "fvg": fvg["type"] if fvg else "NONE (OPTIONAL)",
@@ -324,7 +350,7 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
         "risk_pips": round(risk_pips, 1), "lot_size": DEFAULT_LOT_SIZE,
         "atr_pips": round(atr / pip, 1), "dealing_eq": round(eq, 5), "dealing_high": round(dealing["high"], 5), "dealing_low": round(dealing["low"], 5), "entry_location": location,
         "reference_spread_pips": round(spread_price / pip, 1),
-        "tp1_type": tp1_kind, "tp2_type": tp2_kind,
+        "tp1_type": tp1_kind, "tp2_type": tp2_kind, "tp3_type": tp3_kind,
         "nearest_demand": zones["demand"][0] if zones["demand"] else None,
         "nearest_supply": zones["supply"][0] if zones["supply"] else None,
         "key_support": zones["support"], "key_resistance": zones["resistance"],
