@@ -5,7 +5,7 @@ on:
     branches:
       - feature/validated-demand-supply-zones
     paths:
-      - "research/smc_historical_backtest.py"
+      - "research/msemwafx_smc_engine_backtest.py"
       - "replay_data/**"
       - ".github/workflows/historical_smc_backtest.yml"
   workflow_dispatch:
