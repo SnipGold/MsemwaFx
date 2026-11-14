@@ -9,15 +9,15 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.msemwafx.personal"
+        // New application ID avoids any stale/hidden installation using the
+        // earlier personal package ID and its CI-generated debug certificate.
+        applicationId = "com.msemwafx.mobile"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.0.1"
     }
 
-    // Explicitly use the Android Gradle Plugin's generated debug keystore.
-    // This avoids relying on an implicit signing default in CI.
     buildTypes {
         getByName("debug") {
             signingConfig = signingConfigs.getByName("debug")
