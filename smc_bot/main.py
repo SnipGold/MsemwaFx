@@ -4,6 +4,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from config import M15_OUTPUTSIZE, SENT_TTL, SETUP_EXPIRY_CANDLES, SYMBOLS
+from database import save_signal
 from modules.decision_engine import analyze_pair_diagnostic
 from modules.notifier import (
     format_alert,
@@ -319,6 +320,8 @@ def run():
         setup["generated_at"] = eat_stamp()
         setup["expiry_time"] = expiry_time.astimezone(EAT).strftime("%Y-%m-%d %H:%M EAT")
         signal_candle_eat = signal_time.astimezone(EAT).strftime("%Y-%m-%d %H:%M EAT")
+        # Persist every qualified setup in the same database served to the Android app.
+        save_signal(symbol, setup, entry_status, instruction)
         print(f"  [{setup['generated_at']}] SIGNAL_GENERATED candle={signal_candle_eat} age={age} M15 bars")
 
         setup_key = "|".join([

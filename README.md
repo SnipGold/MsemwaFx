@@ -15,3 +15,12 @@ Features
 - Railway Webhook Integration
 
 Version: 1.20
+
+ 
+## Personal Android app
+
+The `android/` directory contains the personal Android client. It reads the signal history from the single private API; it does not run another market scanner.
+
+## Single-engine deployment
+
+See [smc_bot/DEPLOYMENT.md](smc_bot/DEPLOYMENT.md) before switching production scanning from GitHub Actions to the persistent service. A persistent volume is required for the SQLite signal database.

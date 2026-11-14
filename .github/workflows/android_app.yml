@@ -1,0 +1,61 @@
+name: Build MsemwaFX Android App
+
+on:
+  push:
+    branches:
+      - "feature/msemwafx-personal-android-app"
+    paths:
+      - "android/**"
+      - ".github/workflows/android_app.yml"
+  pull_request:
+    paths:
+      - "android/**"
+      - ".github/workflows/android_app.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Accept Android SDK licenses and install packages
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses
+          "$SDKMANAGER" --install "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build debug APK
+        working-directory: android
+        run: gradle assembleDebug
+      - name: Verify APK signature and package metadata
+        run: |
+          APK="android/app/build/outputs/apk/debug/app-debug.apk"
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          test -s "$APK"
+          sha256sum "$APK"
+      - name: Install and launch on Android 13 emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          arch: x86_64
+          profile: pixel_2
+          script: |
+            adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+            adb shell pm path com.msemwafx.mobile
+            adb shell monkey -p com.msemwafx.mobile 1
+      - name: Upload install-tested APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: msemwafx-android13-tested-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
