@@ -3,7 +3,6 @@ from config import (
     MIN_RISK_ATR_MULTIPLIER,
     MIN_SCORE,
     MIN_SPREAD_MULTIPLIER,
-    MIN_TP1_RR,
 )
 from modules.structure import analyze_structure
 from modules.orderblock import detect_order_block
@@ -285,14 +284,14 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
         for timeframe, zone_set in (("H1", h1_zones), ("H4", h4_zones)):
             for zone in zone_set["supply"]:
                 level = float(zone["low"])
-                if level > entry and (level - entry) / risk >= MIN_TP1_RR:
+                if level > entry:
                     candidates.append({"price": level, "basis": f"{timeframe}_MAJOR_SUPPLY", "zone": zone})
         candidates.sort(key=lambda item: item["price"])
     else:
         for timeframe, zone_set in (("H1", h1_zones), ("H4", h4_zones)):
             for zone in zone_set["demand"]:
                 level = float(zone["high"])
-                if level < entry and (entry - level) / risk >= MIN_TP1_RR:
+                if level < entry:
                     candidates.append({"price": level, "basis": f"{timeframe}_MAJOR_DEMAND", "zone": zone})
         candidates.sort(key=lambda item: item["price"], reverse=True)
 
@@ -310,7 +309,7 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
 
     targets = targets[:3]
     if not targets:
-        return None, "NO H1/H4 MAJOR ZONE PROVIDES THE MINIMUM TP1 R:R"
+        return None, "NO VALID H1/H4 MAJOR TARGET ZONE"
 
     tp1 = targets[0]["price"]
     tp2 = targets[1]["price"] if len(targets) > 1 else None
@@ -330,7 +329,7 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
     if score < MIN_SCORE:
         return None, f"SCORE TOO LOW ({score}/5)"
     tp1_rr = abs(tp1 - entry) / risk
-    tp2_rr = abs(tp2 - entry) / risk
+    tp2_rr = abs(tp2 - entry) / risk if tp2 is not None else None
     setup = {
         "bias": wanted, "h4_bias": h4["bias"], "h1_bias": h1["bias"],
         "direction": direction, "setup_type": "CONTINUATION",
@@ -385,7 +384,7 @@ def analyze_pair_diagnostic(h4_candles, h1_candles, m15_candles, symbol=None):
     candidates.sort(
         key=lambda s: (
             s["score"],
-            s["tp2_rr"],
+            s["tp2_rr"] if s["tp2_rr"] is not None else s["rr"],
             -s["risk_pips"],
         ),
         reverse=True,
