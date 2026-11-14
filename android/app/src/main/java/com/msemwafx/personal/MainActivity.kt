@@ -35,6 +35,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MsemwaFxApp() {
     var apiUrl by remember { mutableStateOf("") }
