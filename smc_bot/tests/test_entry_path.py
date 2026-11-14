@@ -46,6 +46,17 @@ class EntryPathReplayTests(unittest.TestCase):
         status, _ = evaluate_entry_path(setup, m15)
         self.assertEqual(status, "ENTRY TRIGGERED")
 
+    def test_entry_replay_works_without_automatically_identified_tp1(self):
+        setup = self.setup_data("BUY")
+        setup["tp1"] = None
+        m15 = [
+            candle(98, 99),
+            candle(99, 101),
+            candle(100, 104),
+        ]
+        status, _ = evaluate_entry_path(setup, m15)
+        self.assertEqual(status, "ENTRY TRIGGERED")
+
     def test_entry_and_sl_same_candle_is_ambiguous(self):
         setup = self.setup_data("BUY")
         m15 = [candle(98, 99), candle(94, 101)]
