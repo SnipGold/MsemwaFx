@@ -37,6 +37,13 @@ jobs:
       - name: Build debug APK
         working-directory: android
         run: gradle assembleDebug
+      - name: Verify APK signature and package metadata
+        run: |
+          APK="android/app/build/outputs/apk/debug/app-debug.apk"
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          test -s "$APK"
+          sha256sum "$APK"
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
