@@ -194,8 +194,9 @@ def run_pair(code: str, symbol: str):
 
         # Engine's signal_index is relative to the supplied rolling M15 window.
         signal_local = int(setup["signal_index"])
-        if signal_local != len(m15_window) - 1:
-            # Do not trade a stale OB confirmation from an earlier candle.
+        signal_age = (len(m15_window) - 1) - signal_local
+        if signal_age < 0 or signal_age > SETUP_EXPIRY_CANDLES:
+            # Only accept a newly confirmed OB; do not enter a stale zone.
             continue
 
         result = simulate_trade(m15, i, setup, symbol,
