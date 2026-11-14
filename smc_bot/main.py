@@ -256,6 +256,25 @@ def run():
             instruction,
         )
 
+        # Send every fresh qualified setup to the Scout bot for human review.
+        # This is an alert only: the bot never executes the trade.
+        scout_alert_key = f"SCOUT|{setup_key}"
+        if scout_alert_key not in sent:
+            scout_msg = (
+                "🔎 *MsemwaFx Scout — QUALIFIED SETUP FOR TRADER REVIEW*\\n"
+                "*Decision required: TAKE or SKIP. No automatic execution.*\\n\\n"
+                + msg
+            )
+            scout_tg = send_telegram_scout(scout_msg)
+            if scout_tg:
+                sent[scout_alert_key] = time.time()
+                alerts += 1
+                print(f"  SCOUT QUALIFIED ALERT {setup['grade']} {setup['direction']} TG=True")
+            else:
+                print(f"  SCOUT QUALIFIED ALERT NOT CONFIRMED {setup['grade']} {setup['direction']} TG=False")
+        else:
+            print(f"  SCOUT QUALIFIED DUPLICATE {setup['direction']}")
+
         tg = send_telegram(msg)
 
         if tg:
