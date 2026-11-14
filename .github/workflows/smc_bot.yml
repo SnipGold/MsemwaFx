@@ -1,35 +1,21 @@
-name: MsemwaFx SMC ICT Bot
+name: MsemwaFx SMC ICT Bot CI
 
 on:
-  push:
-    paths:
-      - ".github/workflows/smc_bot.yml"
   pull_request:
     paths:
       - "smc_bot/**"
       - ".github/workflows/smc_bot.yml"
-  schedule:
-    - cron: "*/5 * * * *"
   workflow_dispatch:
 
-concurrency:
-  group: msemwafx-smc-live
-  cancel-in-progress: false
-
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   validate:
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    permissions:
-      contents: read
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -41,78 +27,3 @@ jobs:
       - name: Run unit tests
         working-directory: smc_bot
         run: python -m unittest discover -s tests -v
-
-  scan:
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    timeout-minutes: 12
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Install dependencies
-        working-directory: smc_bot
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-      - name: Validate zone engine (retry up to 3 times)
-        working-directory: smc_bot
-        shell: bash
-        run: |
-          for attempt in 1 2 3; do
-            echo "Zone-engine validation attempt $attempt/3"
-            if python -m unittest discover -s tests -v; then
-              exit 0
-            fi
-            if [ "$attempt" -lt 3 ]; then
-              echo "Validation failed; retrying in 30 seconds."
-              sleep 30
-            fi
-          done
-          echo "Zone-engine validation failed after 3 attempts."
-          exit 1
-      - name: Restore bot cache and state
-        uses: actions/cache@v4
-        with:
-          path: |
-            smc_bot/data_cache
-            smc_bot/sent.json
-            smc_bot/m5_usage.json
-          key: msemwafx-state-${{ github.run_id }}
-          restore-keys: |
-            msemwafx-state-
-      - name: Run one MsemwaFx scan
-        working-directory: smc_bot
-        env:
-          TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_SCOUT_BOT_TOKEN: ${{ secrets.TELEGRAM_SCOUT_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          WA_PROVIDER: ${{ secrets.WA_PROVIDER }}
-          WA_PHONE: ${{ secrets.WA_PHONE }}
-          WA_APIKEY: ${{ secrets.WA_APIKEY }}
-        shell: bash
-        run: |
-          for attempt in 1 2 3; do
-            echo "MsemwaFx scan attempt $attempt/3"
-            if python main.py; then
-              exit 0
-            fi
-            if [ "$attempt" -lt 3 ]; then
-              echo "Scan failed; retrying in 30 seconds."
-              sleep 30
-            fi
-          done
-          echo "MsemwaFx scan failed after 3 attempts."
-          exit 1
-      - name: Persist alert state
-        run: |
-          if git diff --quiet -- smc_bot/sent.json; then exit 0; fi
-          git config user.name "msemwafx-bot"
-          git config user.email "msemwafx-bot@users.noreply.github.com"
-          git add smc_bot/sent.json
-          git commit -m "Update bot alert state"
-          git push
