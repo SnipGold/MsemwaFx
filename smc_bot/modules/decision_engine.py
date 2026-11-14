@@ -308,21 +308,22 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
             match.update(candidate)
 
     targets = targets[:3]
-    if not targets:
-        return None, "NO VALID H1/H4 MAJOR TARGET ZONE"
-
-    tp1 = targets[0]["price"]
+    # Targets are advisory context, not a qualification gate. Report the setup
+    # even when no suitable H1/H4 major zone is detected; the human trader reviews
+    # the chart and selects/adjusts objectives before execution.
+    tp1 = targets[0]["price"] if targets else None
     tp2 = targets[1]["price"] if len(targets) > 1 else None
     tp3 = targets[2]["price"] if len(targets) > 2 else None
-    tp1_kind = targets[0]["basis"]
+    tp1_kind = targets[0]["basis"] if targets else None
     tp2_kind = targets[1]["basis"] if len(targets) > 1 else None
     tp3_kind = targets[2]["basis"] if len(targets) > 2 else None
-    if direction == "BUY":
-        if not (sl < entry < tp1) or (tp2 is not None and tp2 <= tp1) or (tp3 is not None and tp3 <= (tp2 if tp2 is not None else tp1)):
-            return None, "DIRECTION/LEVEL MISMATCH — BUY target ordering is invalid"
-    else:
-        if not (tp1 < entry < sl) or (tp2 is not None and tp2 >= tp1) or (tp3 is not None and tp3 >= (tp2 if tp2 is not None else tp1)):
-            return None, "DIRECTION/LEVEL MISMATCH — SELL target ordering is invalid"
+    if tp1 is not None:
+        if direction == "BUY":
+            if not (sl < entry < tp1) or (tp2 is not None and tp2 <= tp1) or (tp3 is not None and tp3 <= (tp2 if tp2 is not None else tp1)):
+                return None, "DIRECTION/LEVEL MISMATCH — BUY target ordering is invalid"
+        else:
+            if not (tp1 < entry < sl) or (tp2 is not None and tp2 >= tp1) or (tp3 is not None and tp3 >= (tp2 if tp2 is not None else tp1)):
+                return None, "DIRECTION/LEVEL MISMATCH — SELL target ordering is invalid"
 
     zones = analyze_zones(m15_candles)
     score = 5 if h4["event"] == "BOS" and h1["event"] == "BOS" else 4
@@ -338,7 +339,7 @@ def _build_candidate(h4, h1, h4_candles, h1_candles, m15_candles, direction, sym
         "tp1": round(tp1, digits),
         "tp2": round(tp2, digits) if tp2 is not None else None,
         "tp3": round(tp3, digits) if tp3 is not None else None,
-        "rr": round(abs(tp1 - entry) / risk, 2),
+        "rr": round(abs(tp1 - entry) / risk, 2) if tp1 is not None else None,
         "tp2_rr": round(abs(tp2 - entry) / risk, 2) if tp2 is not None else None,
         "tp3_rr": round(abs(tp3 - entry) / risk, 2) if tp3 is not None else None,
         "score": score, "grade": "S5" if score == 5 else "S4",
@@ -384,7 +385,7 @@ def analyze_pair_diagnostic(h4_candles, h1_candles, m15_candles, symbol=None):
     candidates.sort(
         key=lambda s: (
             s["score"],
-            s["tp2_rr"] if s["tp2_rr"] is not None else s["rr"],
+            s["tp2_rr"] if s["tp2_rr"] is not None else (s["rr"] if s["rr"] is not None else 0),
             -s["risk_pips"],
         ),
         reverse=True,

@@ -123,7 +123,7 @@ def evaluate_m5_entry(setup, candles):
     entry_low = float(setup["entry_low"])
     entry_high = float(setup["entry_high"])
     sl = float(setup["sl"])
-    tp1 = float(setup["tp1"])
+    tp1 = float(setup["tp1"]) if setup.get("tp1") is not None else None
 
     for candle in candles:
         try:
@@ -138,7 +138,7 @@ def evaluate_m5_entry(setup, candles):
         hit_zone = low <= entry_high and high >= entry_low
 
         if setup["direction"] == "BUY":
-            hit_sl, hit_tp = low <= sl, high >= tp1
+            hit_sl, hit_tp = low <= sl, (tp1 is not None and high >= tp1)
             if not hit_zone and (hit_sl or hit_tp):
                 return False, "M5 SETUP INVALIDATED OR ENTRY MISSED"
             if hit_zone and (hit_sl or hit_tp):
@@ -146,7 +146,7 @@ def evaluate_m5_entry(setup, candles):
             if hit_zone and close > open_price and close > entry_low:
                 return True, f"M5 bullish close confirmed in entry zone ({candle['time']})"
         else:
-            hit_sl, hit_tp = high >= sl, low <= tp1
+            hit_sl, hit_tp = high >= sl, (tp1 is not None and low <= tp1)
             if not hit_zone and (hit_sl or hit_tp):
                 return False, "M5 SETUP INVALIDATED OR ENTRY MISSED"
             if hit_zone and (hit_sl or hit_tp):
@@ -201,17 +201,17 @@ def evaluate_entry_path(setup, m15):
     signal_index = int(setup["signal_index"])
     entry = float(setup["entry"])
     sl = float(setup["sl"])
-    tp1 = float(setup["tp1"])
+    tp1 = float(setup["tp1"]) if setup.get("tp1") is not None else None
     entered = False
 
     for candle in m15[signal_index + 1:]:
         hit_entry = _touches(candle, entry)
         if setup["direction"] == "BUY":
             hit_sl = candle["low"] <= sl
-            hit_tp1 = candle["high"] >= tp1
+            hit_tp1 = tp1 is not None and candle["high"] >= tp1
         else:
             hit_sl = candle["high"] >= sl
-            hit_tp1 = candle["low"] <= tp1
+            hit_tp1 = tp1 is not None and candle["low"] <= tp1
 
         if not entered:
             if hit_entry and (hit_sl or hit_tp1):

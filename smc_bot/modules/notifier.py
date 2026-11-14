@@ -69,8 +69,9 @@ def format_alert(symbol, setup, candle_time, current_price, entry_status, instru
             continue
         rr = setup.get("rr") if number == 1 else setup.get(f"tp{number}_rr")
         basis = setup.get(f"tp{number}_type") or "H1/H4 major zone"
-        target_lines.append(f"🎯 *TP{number}:* {price} | {basis} | R:R 1:{rr}")
-    targets_text = "\n".join(target_lines) if target_lines else "No valid major target identified"
+        rr_text = f" | R:R 1:{rr}" if rr is not None else ""
+        target_lines.append(f"🎯 *TP{number}:* {price} | {basis}{rr_text}")
+    targets_text = "\n".join(target_lines) if target_lines else "No H1/H4 target automatically identified — trader to review major zones manually"
     return (
         f"🚨 *MsemwaFx Institutional Alert*\n\n"
         f"*Pair:* {symbol}\n"
@@ -91,7 +92,7 @@ def format_alert(symbol, setup, candle_time, current_price, entry_status, instru
         f"📏 *Risk Distance:* {setup['risk_pips']} pips\n"
         f"📦 *Reference Lot Size:* {setup['lot_size']:.2f}\n\n"
         f"*Major-zone profit targets:*\n{targets_text}\n\n"
-        f"*Target policy:* H1/H4 supply-demand zones only; minor immediate support/resistance is not used for TP.\n"
+        f"*Target policy:* H1/H4 zones are suggestions, not an entry rejection rule. Verify target and R:R manually before execution.\n"
         f"*Structure:* {setup['event']}\n"
         f"*FVG:* {setup['fvg']}\n"
         f"*Sweep:* {setup['sweep']}\n"
