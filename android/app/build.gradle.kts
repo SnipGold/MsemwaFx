@@ -16,6 +16,14 @@ android {
         versionName = "1.0.0"
     }
 
+    // Explicitly use the Android Gradle Plugin's generated debug keystore.
+    // This avoids relying on an implicit signing default in CI.
+    buildTypes {
+        getByName("debug") {
+            signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
